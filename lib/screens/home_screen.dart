@@ -2,15 +2,39 @@ import 'package:flutter/material.dart';
 import '../models/app_user.dart';
 import '../services/auth_service.dart';
 import 'login_screen.dart';
+import 'edit_profile_screen.dart';
 
-
-class HomeScreen extends StatelessWidget {
+// Pantalla de inicio tras iniciar sesión (RF-01) + acceso a edición de perfil (RF-11).
+class HomeScreen extends StatefulWidget {
   final AppUser user;
   const HomeScreen({super.key, required this.user});
 
   @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  late AppUser user;
+
+  @override
+  void initState() {
+    super.initState();
+    user = widget.user;
+  }
+
+  Future<void> _abrirEditar() async {
+    final actualizado = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => EditProfileScreen(user: user)),
+    );
+    // Si se guardó algún cambio, refrescamos la pantalla.
+    if (actualizado == true) setState(() {});
+  }
+
+  @override
   Widget build(BuildContext context) {
     final esAdmin = user.role == 'administrador';
+    final tieneVehiculo = user.placa.isNotEmpty || user.modelo.isNotEmpty;
 
     return Scaffold(
       appBar: AppBar(
@@ -30,7 +54,7 @@ class HomeScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -58,6 +82,45 @@ class HomeScreen extends StatelessWidget {
                   esAdmin ? Colors.orange.shade100 : Colors.green.shade100,
             ),
             const SizedBox(height: 24),
+
+            // Tarjeta con los datos del vehículo (RF-11)
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: const [
+                        Icon(Icons.directions_car, size: 20),
+                        SizedBox(width: 8),
+                        Text('Mi vehículo',
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 16)),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    if (tieneVehiculo) ...[
+                      Text('Placa: ${user.placa.isEmpty ? "—" : user.placa}'),
+                      Text('Modelo: ${user.modelo.isEmpty ? "—" : user.modelo}'),
+                      Text('Color: ${user.color.isEmpty ? "—" : user.color}'),
+                    ] else
+                      const Text('Aún no has registrado tu vehículo.',
+                          style: TextStyle(color: Colors.grey)),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Botón para editar perfil y vehículo (RF-11)
+            FilledButton.icon(
+              onPressed: _abrirEditar,
+              icon: const Icon(Icons.edit),
+              label: const Text('Editar perfil y vehículo'),
+            ),
+            const SizedBox(height: 16),
+
             if (esAdmin)
               Card(
                 color: Colors.orange.shade50,
