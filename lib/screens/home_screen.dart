@@ -3,8 +3,10 @@ import '../models/app_user.dart';
 import '../services/auth_service.dart';
 import 'login_screen.dart';
 import 'edit_profile_screen.dart';
+import 'mapa_screen.dart';
 
-// Pantalla de inicio tras iniciar sesión (RF-01) + acceso a edición de perfil (RF-11).
+// Pantalla de inicio (RF-01) + edición de perfil y vehículo (RF-11)
+// + acceso a parqueaderos cercanos (RF-02).
 class HomeScreen extends StatefulWidget {
   final AppUser user;
   const HomeScreen({super.key, required this.user});
@@ -118,6 +120,22 @@ class _HomeScreenState extends State<HomeScreen> {
               onPressed: _abrirEditar,
               icon: const Icon(Icons.edit),
               label: const Text('Editar perfil y vehículo'),
+            ),
+            const SizedBox(height: 16),
+
+            // Botón para ver parqueaderos cercanos (RF-02)
+            OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(48),
+              ),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const MapaScreen()),
+                );
+              },
+              icon: const Icon(Icons.map),
+              label: const Text('Buscar parqueaderos cercanos'),
             ),
             const SizedBox(height: 16),
 
