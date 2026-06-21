@@ -10,6 +10,10 @@ import 'tarifa_config_screen.dart';
 // Pantalla de inicio (RF-01 + RF-11 + RF-21).
 // Conductor: ve sus datos, su vehículo y las tarifas (solo lectura).
 // Administrador: además puede configurar tarifas y horarios.
+import 'mapa_screen.dart';
+
+// Pantalla de inicio (RF-01) + edición de perfil y vehículo (RF-11)
+// + acceso a parqueaderos cercanos (RF-02).
 class HomeScreen extends StatefulWidget {
   final AppUser user;
   const HomeScreen({super.key, required this.user});
@@ -167,6 +171,38 @@ class _HomeScreenState extends State<HomeScreen> {
                   style: FilledButton.styleFrom(
                     backgroundColor: color,
                     minimumSize: const Size.fromHeight(48),
+            // Botón para editar perfil y vehículo (RF-11)
+            FilledButton.icon(
+              onPressed: _abrirEditar,
+              icon: const Icon(Icons.edit),
+              label: const Text('Editar perfil y vehículo'),
+            ),
+            const SizedBox(height: 16),
+
+            // Botón para ver parqueaderos cercanos (RF-02)
+            OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(48),
+              ),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const MapaScreen()),
+                );
+              },
+              icon: const Icon(Icons.map),
+              label: const Text('Buscar parqueaderos cercanos'),
+            ),
+            const SizedBox(height: 16),
+
+            if (esAdmin)
+              Card(
+                color: Colors.orange.shade50,
+                child: const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Text(
+                    'Tienes acceso al panel de administración.',
+                    style: TextStyle(fontWeight: FontWeight.w600),
                   ),
                   onPressed: _abrirEditar,
                   icon: const Icon(Icons.edit),
