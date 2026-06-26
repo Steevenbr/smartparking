@@ -1,138 +1,158 @@
 import 'package:flutter/material.dart';
-import '../models/app_user.dart';
-import '../services/auth_service.dart';
-import 'login_screen.dart';
-import 'edit_profile_screen.dart';
+import 'login_screen.dart'; // Para poder cerrar sesión y volver
 
-// Pantalla de inicio tras iniciar sesión (RF-01) + acceso a edición de perfil (RF-11).
-class HomeScreen extends StatefulWidget {
-  final AppUser user;
-  const HomeScreen({super.key, required this.user});
-
-  @override
-  State<HomeScreen> createState() => _HomeScreenState();
-}
-
-class _HomeScreenState extends State<HomeScreen> {
-  late AppUser user;
-
-  @override
-  void initState() {
-    super.initState();
-    user = widget.user;
-  }
-
-  Future<void> _abrirEditar() async {
-    final actualizado = await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => EditProfileScreen(user: user)),
-    );
-    // Si se guardó algún cambio, refrescamos la pantalla.
-    if (actualizado == true) setState(() {});
-  }
+class HomeScreen extends StatelessWidget {
+  const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final esAdmin = user.role == 'administrador';
-    final tieneVehiculo = user.placa.isNotEmpty || user.modelo.isNotEmpty;
+    // Lista de opciones del menú basadas en los módulos de tu proyecto
+    final List<Map<String, dynamic>> menuOptions = [
+      {
+        'title': 'Espacios Disponibles',
+        'icon': Icons.directions_car_rounded,
+        'color': Colors.blue,
+        'route': 'disponibilidad',
+      },
+      {
+        'title': 'Reservar Lugar',
+        'icon': Icons.bookmark_add_rounded,
+        'color': Colors.green,
+        'route': 'reservas',
+      },
+      {
+        'title': 'Mi Historial',
+        'icon': Icons.history_rounded,
+        'color': Colors.orange,
+        'route': 'historial',
+      },
+      {
+        'title': 'Mapa del Parqueadero',
+        'icon': Icons.map_rounded,
+        'color': Colors.purple,
+        'route': 'mapas',
+      },
+      {
+        'title': 'Cálculo de Tarifas',
+        'icon': Icons.monetization_on_rounded,
+        'color': Colors.teal,
+        'route': 'tarifas',
+      },
+      {
+        'title': 'Panel Administrador',
+        'icon': Icons.admin_panel_settings_rounded,
+        'color': Colors.redAccent,
+        'route': 'admin',
+      },
+    ];
 
     return Scaffold(
+      backgroundColor: Colors.grey[100],
+      // Barra Superior (AppBar)
       appBar: AppBar(
-        title: const Text('SmartParking'),
+        title: const Text(
+          'SmartParking Panel',
+          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+        ),
+        backgroundColor: Colors.blue,
+        elevation: 2,
         actions: [
+          // Botón para Cerrar Sesión
           IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: 'Cerrar sesión',
-            onPressed: () async {
-              await AuthService().logout();
-              if (!context.mounted) return;
+            icon: const Icon(Icons.logout_rounded, color: Colors.white),
+            tooltip: 'Cerrar Sesión',
+            onPressed: () {
+              // Regresa al Login quitando la pantalla de Home del historial
               Navigator.pushReplacement(
                 context,
-                MaterialPageRoute(builder: (_) => const LoginScreen()),
+                MaterialPageRoute(builder: (context) => const LoginScreen()),
               );
             },
           ),
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            CircleAvatar(
-              radius: 32,
-              backgroundColor: esAdmin ? Colors.orange : Colors.green,
-              child: Text(
-                user.name.isNotEmpty ? user.name[0].toUpperCase() : '?',
-                style: const TextStyle(
-                    fontSize: 28,
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold),
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Sección de Bienvenida
+              const Text(
+                '¡Hola de nuevo!',
+                style: TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            Text(user.name,
-                style: const TextStyle(
-                    fontSize: 22, fontWeight: FontWeight.bold)),
-            Text(user.email, style: const TextStyle(color: Colors.grey)),
-            const SizedBox(height: 8),
-            Chip(
-              label: Text(user.role.toUpperCase()),
-              backgroundColor:
-                  esAdmin ? Colors.orange.shade100 : Colors.green.shade100,
-            ),
-            const SizedBox(height: 24),
+              const SizedBox(height: 4),
+              Text(
+                'Gestiona tus espacios y reservas de parqueo de forma fácil.',
+                style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+              ),
+              const SizedBox(height: 32),
 
-            // Tarjeta con los datos del vehículo (RF-11)
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: const [
-                        Icon(Icons.directions_car, size: 20),
-                        SizedBox(width: 8),
-                        Text('Mi vehículo',
-                            style: TextStyle(
-                                fontWeight: FontWeight.bold, fontSize: 16)),
-                      ],
+              // Grilla Responsiva para las Opciones
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: 200, // Ancho máximo de cada tarjeta
+                  childAspectRatio: 1.1,   // Proporción de la tarjeta
+                  crossAxisSpacing: 16,
+                  mainAxisSpacing: 16,
+                ),
+                itemCount: menuOptions.length,
+                itemBuilder: (context, index) {
+                  final option = menuOptions[index];
+                  return Card(
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
                     ),
-                    const SizedBox(height: 12),
-                    if (tieneVehiculo) ...[
-                      Text('Placa: ${user.placa.isEmpty ? "—" : user.placa}'),
-                      Text('Modelo: ${user.modelo.isEmpty ? "—" : user.modelo}'),
-                      Text('Color: ${user.color.isEmpty ? "—" : user.color}'),
-                    ] else
-                      const Text('Aún no has registrado tu vehículo.',
-                          style: TextStyle(color: Colors.grey)),
-                  ],
-                ),
+                    color: Colors.white,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(16),
+                      onTap: () {
+                        // Por ahora solo muestra un mensaje de qué modulo se presionó
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Módulo en desarrollo: ${option['title']}'),
+                            duration: const Duration(seconds: 1),
+                          ),
+                        );
+                      },
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          CircleAvatar(
+                            radius: 28,
+                            backgroundColor: option['color'].withOpacity(0.1),
+                            child: Icon(
+                              option['icon'],
+                              size: 32,
+                              color: option['color'],
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            option['title'],
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
               ),
-            ),
-            const SizedBox(height: 16),
-
-            // Botón para editar perfil y vehículo (RF-11)
-            FilledButton.icon(
-              onPressed: _abrirEditar,
-              icon: const Icon(Icons.edit),
-              label: const Text('Editar perfil y vehículo'),
-            ),
-            const SizedBox(height: 16),
-
-            if (esAdmin)
-              Card(
-                color: Colors.orange.shade50,
-                child: const Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Text(
-                    'Tienes acceso al panel de administración.',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );

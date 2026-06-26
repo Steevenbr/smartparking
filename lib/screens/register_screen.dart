@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
-import '../models/app_user.dart';
-import '../services/auth_service.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // <--- Conexión real a Firebase
 
-// Pantalla de registro de usuarios con selección de rol (RF-01).
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
 
@@ -11,117 +9,200 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
-  final _auth = AuthService();
-  final _nameCtrl = TextEditingController();
-  final _emailCtrl = TextEditingController();
-  final _passCtrl = TextEditingController();
-  String _role = 'conductor';
-  String? _error;
-  bool _loading = false;
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
 
-  Future<void> _register() async {
-    final name = _nameCtrl.text.trim();
-    final email = _emailCtrl.text.trim();
-    final pass = _passCtrl.text;
+  bool _isPasswordVisible = false;
+  bool _isConfirmPasswordVisible = false;
+  bool _isLoading = false;
 
-    if (name.isEmpty || email.isEmpty || pass.isEmpty) {
-      setState(() => _error = 'Completa todos los campos.');
-      return;
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
+
+  void _submitRegister() async {
+    if (_formKey.currentState!.validate()) {
+      setState(() {
+        _isLoading = true;
+      });
+
+      try {
+        // Petición real para registrar un nuevo usuario en Firebase Authentication
+        await FirebaseAuth.instance.createUserWithEmailAndPassword(
+          email: _emailController.text.trim(),
+          password: _passwordController.text.trim(),
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('¡Cuenta creada con éxito en Firebase! Ya puedes iniciar sesión.'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          // Retornar automáticamente al Login
+          Navigator.pop(context);
+        }
+      } on FirebaseAuthException catch (e) {
+        String errorMessage = 'Ocurrió un error al registrarse.';
+
+        if (e.code == 'email-already-in-use') {
+          errorMessage = 'Este correo ya está registrado en la plataforma.';
+        } else if (e.code == 'weak-password') {
+          errorMessage = 'La contraseña proporcionada es muy débil (mínimo 6 caracteres).';
+        } else if (e.code == 'invalid-email') {
+          errorMessage = 'El formato del correo electrónico no es válido.';
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(errorMessage), backgroundColor: Colors.red),
+        );
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
+      }
     }
-    if (pass.length < 6) {
-      setState(() => _error = 'La contraseña debe tener al menos 6 caracteres.');
-      return;
-    }
-
-    setState(() {
-      _error = null;
-      _loading = true;
-    });
-
-    final result = await _auth.register(
-      AppUser(name: name, email: email, password: pass, role: _role),
-    );
-
-    setState(() => _loading = false);
-
-    if (result != null) {
-      setState(() => _error = result);
-      return;
-    }
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Cuenta creada. Ya puedes iniciar sesión.')),
-    );
-    Navigator.pop(context);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Crear cuenta')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            TextField(
-              controller: _nameCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Nombre completo',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.person_outline),
+      backgroundColor: Colors.grey[100],
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black87),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
+      body: Center(
+        child: SingleChildScrollView(
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 400),
+            padding: const EdgeInsets.all(24.0),
+            margin: const EdgeInsets.only(left: 16.0, right: 16.0, bottom: 40.0),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'Crear Cuenta',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 32),
+
+                  // Campo de Nombre
+                  TextFormField(
+                    controller: _nameController,
+                    decoration: InputDecoration(
+                      labelText: 'Nombre Completo',
+                      prefixIcon: const Icon(Icons.person_outline_rounded),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) return 'Ingresa tu nombre';
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Campo de Correo
+                  TextFormField(
+                    controller: _emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: InputDecoration(
+                      labelText: 'Correo Electrónico',
+                      prefixIcon: const Icon(Icons.email_outlined),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) return 'Ingresa tu correo';
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Campo de Contraseña
+                  TextFormField(
+                    controller: _passwordController,
+                    obscureText: !_isPasswordVisible,
+                    decoration: InputDecoration(
+                      labelText: 'Contraseña',
+                      prefixIcon: const Icon(Icons.lock_outline_rounded),
+                      suffixIcon: IconButton(
+                        icon: Icon(_isPasswordVisible ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+                        onPressed: () => setState(() => _isPasswordVisible = !_isPasswordVisible),
+                      ),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) return 'Ingresa una contraseña';
+                      if (value.length < 6) return 'Debe tener al menos 6 caracteres';
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Campo de Confirmar Contraseña
+                  TextFormField(
+                    controller: _confirmPasswordController,
+                    obscureText: !_isConfirmPasswordVisible,
+                    decoration: InputDecoration(
+                      labelText: 'Confirmar Contraseña',
+                      prefixIcon: const Icon(Icons.lock_clock_outlined),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) return 'Confirma tu contraseña';
+                      if (value != _passwordController.text) return 'Las contraseñas no coinciden';
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 32),
+
+                  // Botón de Registrarse / Cargando
+                  _isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : ElevatedButton(
+                    onPressed: _submitRegister,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: const Text('Registrarse', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _emailCtrl,
-              keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(
-                labelText: 'Correo',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.email_outlined),
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _passCtrl,
-              obscureText: true,
-              decoration: const InputDecoration(
-                labelText: 'Contraseña',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.lock_outline),
-              ),
-            ),
-            const SizedBox(height: 20),
-            const Text('Rol', style: TextStyle(fontWeight: FontWeight.bold)),
-            RadioListTile<String>(
-              title: const Text('Conductor'),
-              value: 'conductor',
-              groupValue: _role,
-              onChanged: (v) => setState(() => _role = v!),
-            ),
-            RadioListTile<String>(
-              title: const Text('Administrador'),
-              value: 'administrador',
-              groupValue: _role,
-              onChanged: (v) => setState(() => _role = v!),
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: 8),
-              Text(_error!, style: const TextStyle(color: Colors.red)),
-            ],
-            const SizedBox(height: 20),
-            FilledButton(
-              onPressed: _loading ? null : _register,
-              child: _loading
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Crear cuenta'),
-            ),
-          ],
+          ),
         ),
       ),
     );
