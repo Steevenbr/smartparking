@@ -6,7 +6,7 @@ import '../models/parking_rate_model.dart';
 
 class CostView extends StatefulWidget {
   final ParkingRateModel model;
-  CostView({required this.model});
+  const CostView({super.key, required this.model});
 
   @override
   _CostViewState createState() => _CostViewState();

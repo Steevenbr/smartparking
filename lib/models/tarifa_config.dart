@@ -7,8 +7,8 @@ class TarifaConfig {
   String horaCierre;      // ej. "20:00"
 
   TarifaConfig({
-    this.tarifaHora = 0,
-    this.tarifaFraccion = 0,
+    this.tarifaHora = 1.0,
+    this.tarifaFraccion = 0.25,
     this.minutosFraccion = 15,
     this.horaApertura = '08:00',
     this.horaCierre = '20:00',

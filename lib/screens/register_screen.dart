@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart'; // <--- Conexión real a Firebase
+import '../services/auth_service.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -16,7 +17,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _confirmPasswordController = TextEditingController();
 
   bool _isPasswordVisible = false;
-  bool _isConfirmPasswordVisible = false;
+  final bool _isConfirmPasswordVisible = false;
   bool _isLoading = false;
 
   @override
@@ -35,8 +36,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
       });
 
       try {
-        // Petición real para registrar un nuevo usuario en Firebase Authentication
-        await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        // Registra en Auth y guarda el perfil (nombre + rol) en Firestore.
+        await AuthService().registrar(
+          nombre: _nameController.text.trim(),
           email: _emailController.text.trim(),
           password: _passwordController.text.trim(),
         );
@@ -65,6 +67,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(errorMessage), backgroundColor: Colors.red),
         );
+      } catch (e) {
+        // Captura cualquier otro error (por ejemplo, reglas de Firestore).
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Cuenta creada, pero hubo un detalle al guardar el perfil: $e'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+          Navigator.pop(context);
+        }
       } finally {
         if (mounted) {
           setState(() {

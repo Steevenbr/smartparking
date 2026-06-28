@@ -1,54 +1,59 @@
 import 'package:flutter/material.dart';
-import 'login_screen.dart'; // Para poder cerrar sesión y volver
+import '../services/auth_service.dart';
+import 'login_screen.dart';
+import 'disponibilidad_screen.dart';
+import 'reserva_screen.dart';
+import 'historial_screen.dart';
+import 'mapa_screen.dart';
+import 'tarifas_screen.dart';
+import 'admin_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // Lista de opciones del menú basadas en los módulos de tu proyecto
     final List<Map<String, dynamic>> menuOptions = [
       {
         'title': 'Espacios Disponibles',
         'icon': Icons.directions_car_rounded,
         'color': Colors.blue,
-        'route': 'disponibilidad',
+        'pantalla': const DisponibilidadScreen(),
       },
       {
         'title': 'Reservar Lugar',
         'icon': Icons.bookmark_add_rounded,
         'color': Colors.green,
-        'route': 'reservas',
+        'pantalla': const ReservaScreen(),
       },
       {
         'title': 'Mi Historial',
         'icon': Icons.history_rounded,
         'color': Colors.orange,
-        'route': 'historial',
+        'pantalla': const HistorialScreen(),
       },
       {
         'title': 'Mapa del Parqueadero',
         'icon': Icons.map_rounded,
         'color': Colors.purple,
-        'route': 'mapas',
+        'pantalla': const MapaScreen(),
       },
       {
         'title': 'Cálculo de Tarifas',
         'icon': Icons.monetization_on_rounded,
         'color': Colors.teal,
-        'route': 'tarifas',
+        'pantalla': const TarifasScreen(),
       },
       {
         'title': 'Panel Administrador',
         'icon': Icons.admin_panel_settings_rounded,
         'color': Colors.redAccent,
-        'route': 'admin',
+        'pantalla': const AdminScreen(),
       },
     ];
 
     return Scaffold(
       backgroundColor: Colors.grey[100],
-      // Barra Superior (AppBar)
       appBar: AppBar(
         title: const Text(
           'SmartParking Panel',
@@ -57,16 +62,17 @@ class HomeScreen extends StatelessWidget {
         backgroundColor: Colors.blue,
         elevation: 2,
         actions: [
-          // Botón para Cerrar Sesión
           IconButton(
             icon: const Icon(Icons.logout_rounded, color: Colors.white),
             tooltip: 'Cerrar Sesión',
-            onPressed: () {
-              // Regresa al Login quitando la pantalla de Home del historial
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (context) => const LoginScreen()),
-              );
+            onPressed: () async {
+              await AuthService().cerrarSesion(); // RF-09
+              if (context.mounted) {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (context) => const LoginScreen()),
+                );
+              }
             },
           ),
         ],
@@ -77,7 +83,6 @@ class HomeScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Sección de Bienvenida
               const Text(
                 '¡Hola de nuevo!',
                 style: TextStyle(
@@ -92,14 +97,12 @@ class HomeScreen extends StatelessWidget {
                 style: TextStyle(fontSize: 16, color: Colors.grey[600]),
               ),
               const SizedBox(height: 32),
-
-              // Grilla Responsiva para las Opciones
               GridView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: 200, // Ancho máximo de cada tarjeta
-                  childAspectRatio: 1.1,   // Proporción de la tarjeta
+                  maxCrossAxisExtent: 200,
+                  childAspectRatio: 1.1,
                   crossAxisSpacing: 16,
                   mainAxisSpacing: 16,
                 ),
@@ -115,11 +118,11 @@ class HomeScreen extends StatelessWidget {
                     child: InkWell(
                       borderRadius: BorderRadius.circular(16),
                       onTap: () {
-                        // Por ahora solo muestra un mensaje de qué modulo se presionó
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Módulo en desarrollo: ${option['title']}'),
-                            duration: const Duration(seconds: 1),
+                        // Ahora cada botón abre su pantalla real.
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => option['pantalla'] as Widget,
                           ),
                         );
                       },

@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 class ParkingCostMonitor extends StatefulWidget {
   final DateTime entryTime;
   final double rate;
-  ParkingCostMonitor({required this.entryTime, required this.rate});
+  const ParkingCostMonitor({super.key, required this.entryTime, required this.rate});
 
   @override
   _ParkingCostMonitorState createState() => _ParkingCostMonitorState();
