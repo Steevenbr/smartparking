@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart'; // <--- Conexión real a Firebase
+import '../services/auth_service.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -16,8 +17,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _confirmPasswordController = TextEditingController();
 
   bool _isPasswordVisible = false;
-  bool _isConfirmPasswordVisible = false;
+  final bool _isConfirmPasswordVisible = false;
   bool _isLoading = false;
+  String _rol = 'conductor'; // RF-22: rol seleccionado
 
   @override
   void dispose() {
@@ -35,10 +37,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
       });
 
       try {
-        // Petición real para registrar un nuevo usuario en Firebase Authentication
-        await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        // Registra en Auth y guarda el perfil (nombre + rol) en Firestore.
+        await AuthService().registrar(
+          nombre: _nameController.text.trim(),
           email: _emailController.text.trim(),
           password: _passwordController.text.trim(),
+          rol: _rol,
         );
 
         if (mounted) {
@@ -65,6 +69,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(errorMessage), backgroundColor: Colors.red),
         );
+      } catch (e) {
+        // Captura cualquier otro error (por ejemplo, reglas de Firestore).
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Cuenta creada, pero hubo un detalle al guardar el perfil: $e'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+          Navigator.pop(context);
+        }
       } finally {
         if (mounted) {
           setState(() {
@@ -116,6 +131,36 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 32),
+
+                  // Selector de rol (RF-22)
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('¿Cómo te vas a registrar?',
+                        style: TextStyle(fontWeight: FontWeight.w600)),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _RolCard(
+                          icon: Icons.directions_car_rounded,
+                          titulo: 'Conductor',
+                          seleccionado: _rol == 'conductor',
+                          onTap: () => setState(() => _rol = 'conductor'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _RolCard(
+                          icon: Icons.store_mall_directory_rounded,
+                          titulo: 'Dueño de garaje',
+                          seleccionado: _rol == 'dueno',
+                          onTap: () => setState(() => _rol = 'dueno'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
 
                   // Campo de Nombre
                   TextFormField(
@@ -203,6 +248,54 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+// Tarjeta seleccionable de rol (RF-22).
+class _RolCard extends StatelessWidget {
+  final IconData icon;
+  final String titulo;
+  final bool seleccionado;
+  final VoidCallback onTap;
+
+  const _RolCard({
+    required this.icon,
+    required this.titulo,
+    required this.seleccionado,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+        decoration: BoxDecoration(
+          color: seleccionado ? Colors.blue.shade50 : Colors.transparent,
+          border: Border.all(
+            color: seleccionado ? Colors.blue : Colors.grey.shade400,
+            width: seleccionado ? 2 : 1,
+          ),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          children: [
+            Icon(icon,
+                size: 32, color: seleccionado ? Colors.blue : Colors.grey),
+            const SizedBox(height: 8),
+            Text(
+              titulo,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: seleccionado ? Colors.blue : Colors.black87,
+              ),
+            ),
+          ],
         ),
       ),
     );

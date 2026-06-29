@@ -7,6 +7,8 @@ class ProfileView extends StatelessWidget {
   final ProfileController _controller = ProfileController();
   final TextEditingController _plateCtrl = TextEditingController();
 
+  ProfileView({super.key});
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
