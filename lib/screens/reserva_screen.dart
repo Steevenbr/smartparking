@@ -16,7 +16,9 @@ class _ReservaScreenState extends State<ReservaScreen> {
   final _reservas = ReservaService();
   final _duracionCtrl = TextEditingController(text: '2');
 
-  Parqueadero? _seleccionado;
+  // Guardamos solo el id (texto) para evitar el error del Dropdown.
+  String? _seleccionadoId;
+  List<Parqueadero> _lista = [];
   DateTime _fecha = DateTime.now();
   TimeOfDay _hora = TimeOfDay.now();
   bool _guardando = false;
@@ -28,16 +30,17 @@ class _ReservaScreenState extends State<ReservaScreen> {
       '${_hora.hour.toString().padLeft(2, '0')}:${_hora.minute.toString().padLeft(2, '0')}';
 
   Future<void> _guardar() async {
-    if (_seleccionado == null) {
+    if (_seleccionadoId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Selecciona un parqueadero.')),
       );
       return;
     }
+    final p = _lista.firstWhere((x) => x.id == _seleccionadoId);
     setState(() => _guardando = true);
     await _reservas.crearReserva(
-      parqueaderoId: _seleccionado!.id,
-      parqueaderoNombre: _seleccionado!.nombre,
+      parqueaderoId: p.id,
+      parqueaderoNombre: p.nombre,
       fecha: _fechaTexto(),
       hora: _horaTexto(),
       duracionHoras: int.tryParse(_duracionCtrl.text) ?? 1,
@@ -59,7 +62,27 @@ class _ReservaScreenState extends State<ReservaScreen> {
       body: StreamBuilder<List<Parqueadero>>(
         stream: _parqueaderos.escucharParqueaderos(),
         builder: (context, snapshot) {
-          final lista = snapshot.data ?? [];
+          _lista = snapshot.data ?? [];
+          // Si el id guardado ya no está en la lista, lo limpiamos.
+          if (_seleccionadoId != null &&
+              !_lista.any((p) => p.id == _seleccionadoId)) {
+            _seleccionadoId = null;
+          }
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (_lista.isEmpty) {
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  'Aún no hay parqueaderos registrados.\n'
+                  'El administrador debe crearlos primero desde el Panel Administrador.',
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            );
+          }
           return SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: Column(
@@ -68,18 +91,19 @@ class _ReservaScreenState extends State<ReservaScreen> {
                 const Text('Parqueadero',
                     style: TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
-                DropdownButtonFormField<Parqueadero>(
-                  value: _seleccionado,
+                DropdownButtonFormField<String>(
+                  value: _seleccionadoId,
                   isExpanded: true,
                   decoration: const InputDecoration(border: OutlineInputBorder()),
                   hint: const Text('Selecciona un parqueadero'),
-                  items: lista
-                      .map((p) => DropdownMenuItem(
-                            value: p,
-                            child: Text(p.nombre, overflow: TextOverflow.ellipsis),
+                  items: _lista
+                      .map((p) => DropdownMenuItem<String>(
+                            value: p.id,
+                            child:
+                                Text(p.nombre, overflow: TextOverflow.ellipsis),
                           ))
                       .toList(),
-                  onChanged: (v) => setState(() => _seleccionado = v),
+                  onChanged: (v) => setState(() => _seleccionadoId = v),
                 ),
                 const SizedBox(height: 20),
                 ListTile(

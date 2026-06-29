@@ -7,9 +7,16 @@ class ParqueaderoService {
 
   CollectionReference get _col => _db.collection('parqueaderos');
 
-  // RF-03 / RF-27: Escucha en tiempo real la lista de parqueaderos.
+  // RF-03 / RF-27: Escucha en tiempo real la lista de parqueaderos (conductor).
   Stream<List<Parqueadero>> escucharParqueaderos() {
     return _col.where('activo', isEqualTo: true).snapshots().map(
+          (snap) => snap.docs.map((d) => Parqueadero.fromFirestore(d)).toList(),
+        );
+  }
+
+  // RF-20: Escucha solo los garajes de un dueño en particular.
+  Stream<List<Parqueadero>> escucharMisGarajes(String ownerId) {
+    return _col.where('ownerId', isEqualTo: ownerId).snapshots().map(
           (snap) => snap.docs.map((d) => Parqueadero.fromFirestore(d)).toList(),
         );
   }
@@ -29,44 +36,5 @@ class ParqueaderoService {
     await _col.doc(id).update({
       'espaciosLibres': FieldValue.increment(delta),
     });
-  }
-
-  // Crea datos de prueba si la colección está vacía (para la demo).
-  Future<void> sembrarDatosDemo() async {
-    final existentes = await _col.limit(1).get();
-    if (existentes.docs.isNotEmpty) return; // ya hay datos, no duplica
-
-    final demo = <Parqueadero>[
-      const Parqueadero(
-        nombre: 'Parqueadero Central ESPE-L',
-        direccion: 'Av. General Rumiñahui, Latacunga',
-        latitud: -0.9145,
-        longitud: -78.6171,
-        espaciosTotales: 50,
-        espaciosLibres: 32,
-        tarifaHora: 1.0,
-      ),
-      const Parqueadero(
-        nombre: 'Parqueadero La Estación',
-        direccion: 'Calle Marqués de Maenza, Latacunga',
-        latitud: -0.9320,
-        longitud: -78.6150,
-        espaciosTotales: 30,
-        espaciosLibres: 8,
-        tarifaHora: 0.75,
-      ),
-      const Parqueadero(
-        nombre: 'Parqueadero El Salto',
-        direccion: 'Mercado El Salto, Latacunga',
-        latitud: -0.9355,
-        longitud: -78.6190,
-        espaciosTotales: 40,
-        espaciosLibres: 0,
-        tarifaHora: 1.25,
-      ),
-    ];
-    for (final p in demo) {
-      await _col.add(p.toMap());
-    }
   }
 }

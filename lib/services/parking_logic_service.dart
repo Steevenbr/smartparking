@@ -15,19 +15,21 @@ class ParkingLogicService {
 
   CollectionReference get _col => _db.collection('registros');
 
-  // RF-05: Registrar entrada. Crea una sesión activa y descuenta un espacio.
+  // RF-05: Registrar entrada. La hora la pone el SERVIDOR (no el teléfono),
+  // para que nadie pueda manipular el reloj y pagar de menos.
   Future<String> registrarEntrada(Parqueadero p) async {
     final user = _auth.currentUser!;
-    final registro = Registro(
-      usuarioId: user.uid,
-      usuarioEmail: user.email ?? '',
-      parqueaderoId: p.id,
-      parqueaderoNombre: p.nombre,
-      tarifaHora: p.tarifaHora,
-      horaEntrada: DateTime.now(),
-      estado: 'activo',
-    );
-    final ref = await _col.add(registro.toMap());
+    final ref = await _col.add({
+      'usuarioId': user.uid,
+      'usuarioEmail': user.email ?? '',
+      'parqueaderoId': p.id,
+      'parqueaderoNombre': p.nombre,
+      'tarifaHora': p.tarifaHora,
+      'horaEntrada': FieldValue.serverTimestamp(), // hora real del servidor
+      'horaSalida': null,
+      'costo': 0,
+      'estado': 'activo',
+    });
     await _parqueaderos.cambiarEspacios(p.id, -1); // RF-27
     return ref.id;
   }
@@ -41,17 +43,39 @@ class ParkingLogicService {
     return fracciones * cfg.tarifaFraccion;
   }
 
-  // RF-05 + RF-06: Registrar salida. Calcula el costo y cierra la sesión.
+  // RF-05 + RF-06: Registrar salida. El costo se calcula con las horas
+  // REALES del servidor, no con el reloj del teléfono.
   Future<double> registrarSalida(String registroId, String parqueaderoId,
-      DateTime horaEntrada) async {
+      DateTime horaEntradaRespaldo) async {
     final cfg = await _tarifas.getConfig();
-    final salida = DateTime.now();
-    final costo = calcularCosto(horaEntrada, salida, cfg);
+
+    // 1. Marcamos la salida con la hora del servidor.
     await _col.doc(registroId).update({
-      'horaSalida': Timestamp.fromDate(salida),
-      'costo': costo,
+      'horaSalida': FieldValue.serverTimestamp(),
       'estado': 'finalizado',
     });
+
+    // 2. Leemos del SERVIDOR las horas reales de entrada y salida.
+    DateTime entrada = horaEntradaRespaldo;
+    DateTime salida = DateTime.now();
+    try {
+      final doc = await _col
+          .doc(registroId)
+          .get(const GetOptions(source: Source.server));
+      final data = doc.data() as Map<String, dynamic>;
+      if (data['horaEntrada'] is Timestamp) {
+        entrada = (data['horaEntrada'] as Timestamp).toDate();
+      }
+      if (data['horaSalida'] is Timestamp) {
+        salida = (data['horaSalida'] as Timestamp).toDate();
+      }
+    } catch (_) {
+      // Si no hay conexión al servidor, usamos las horas locales como respaldo.
+    }
+
+    // 3. Calculamos el costo con esas horas y lo guardamos.
+    final costo = calcularCosto(entrada, salida, cfg);
+    await _col.doc(registroId).update({'costo': costo});
     await _parqueaderos.cambiarEspacios(parqueaderoId, 1); // RF-27
     return costo;
   }

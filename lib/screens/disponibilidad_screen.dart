@@ -12,23 +12,7 @@ class DisponibilidadScreen extends StatelessWidget {
     final service = ParqueaderoService();
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Espacios Disponibles'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.cloud_upload_outlined),
-            tooltip: 'Crear datos de prueba',
-            onPressed: () async {
-              await service.sembrarDatosDemo();
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Datos de prueba listos.')),
-                );
-              }
-            },
-          ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Espacios Disponibles')),
       body: StreamBuilder<List<Parqueadero>>(
         stream: service.escucharParqueaderos(),
         builder: (context, snapshot) {
@@ -37,23 +21,19 @@ class DisponibilidadScreen extends StatelessWidget {
           }
           final lista = snapshot.data ?? [];
           if (lista.isEmpty) {
-            return Center(
+            return const Center(
               child: Padding(
-                padding: const EdgeInsets.all(24),
+                padding: EdgeInsets.all(24),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.local_parking, size: 60, color: Colors.grey),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'No hay parqueaderos todavía.',
+                    Icon(Icons.local_parking, size: 60, color: Colors.grey),
+                    SizedBox(height: 12),
+                    Text(
+                      'No hay parqueaderos registrados.\n'
+                      'El administrador debe crearlos desde el Panel Administrador.',
+                      textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 16),
-                    ),
-                    const SizedBox(height: 12),
-                    FilledButton.icon(
-                      onPressed: () => service.sembrarDatosDemo(),
-                      icon: const Icon(Icons.add),
-                      label: const Text('Crear datos de prueba'),
                     ),
                   ],
                 ),

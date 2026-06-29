@@ -35,7 +35,9 @@ class Registro {
       parqueaderoId: data['parqueaderoId'] ?? '',
       parqueaderoNombre: data['parqueaderoNombre'] ?? '',
       tarifaHora: (data['tarifaHora'] ?? 0).toDouble(),
-      horaEntrada: (data['horaEntrada'] as Timestamp).toDate(),
+      horaEntrada: data['horaEntrada'] != null
+          ? (data['horaEntrada'] as Timestamp).toDate()
+          : DateTime.now(),
       horaSalida: data['horaSalida'] != null
           ? (data['horaSalida'] as Timestamp).toDate()
           : null,

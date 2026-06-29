@@ -7,22 +7,23 @@ class AuthService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   User? get usuarioActual => _auth.currentUser;
+  String get uid => _auth.currentUser?.uid ?? '';
 
-  // RF-01: Registro. Crea el usuario en Auth y guarda su perfil en Firestore.
+  // RF-01 + RF-22: Registro con rol ('conductor' o 'dueno').
   Future<void> registrar({
     required String nombre,
     required String email,
     required String password,
+    required String rol,
   }) async {
     final cred = await _auth.createUserWithEmailAndPassword(
       email: email.trim(),
       password: password.trim(),
     );
-    // Guarda el perfil en la colección 'usuarios' con su rol por defecto.
     await _db.collection('usuarios').doc(cred.user!.uid).set({
       'nombre': nombre.trim(),
       'email': email.trim(),
-      'rol': 'conductor', // RF-22: rol por defecto
+      'rol': rol, // RF-22
       'creadoEn': Timestamp.now(),
     });
   }
@@ -35,11 +36,11 @@ class AuthService {
     );
   }
 
-  // RF-22: Devuelve el rol del usuario ('conductor' o 'admin').
+  // RF-22: Devuelve el rol del usuario ('conductor' o 'dueno').
   Future<String> obtenerRol() async {
-    final uid = _auth.currentUser?.uid;
-    if (uid == null) return 'conductor';
-    final doc = await _db.collection('usuarios').doc(uid).get();
+    final id = uid;
+    if (id.isEmpty) return 'conductor';
+    final doc = await _db.collection('usuarios').doc(id).get();
     if (!doc.exists) return 'conductor';
     return (doc.data()?['rol'] ?? 'conductor') as String;
   }

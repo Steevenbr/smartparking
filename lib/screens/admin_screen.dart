@@ -67,6 +67,8 @@ class AdminScreen extends StatelessWidget {
     final dirCtrl = TextEditingController();
     final espaciosCtrl = TextEditingController(text: '20');
     final tarifaCtrl = TextEditingController(text: '1.0');
+    final latCtrl = TextEditingController(text: '-0.9333');
+    final longCtrl = TextEditingController(text: '-78.6167');
     final service = ParqueaderoService();
 
     showDialog(
@@ -95,6 +97,18 @@ class AdminScreen extends StatelessWidget {
                 keyboardType: TextInputType.number,
                 decoration: const InputDecoration(labelText: 'Tarifa por hora (\$)'),
               ),
+              TextField(
+                controller: latCtrl,
+                keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true, signed: true),
+                decoration: const InputDecoration(labelText: 'Latitud'),
+              ),
+              TextField(
+                controller: longCtrl,
+                keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true, signed: true),
+                decoration: const InputDecoration(labelText: 'Longitud'),
+              ),
             ],
           ),
         ),
@@ -109,8 +123,8 @@ class AdminScreen extends StatelessWidget {
               final p = Parqueadero(
                 nombre: nombreCtrl.text.trim(),
                 direccion: dirCtrl.text.trim(),
-                latitud: -0.9333,
-                longitud: -78.6167,
+                latitud: double.tryParse(latCtrl.text) ?? -0.9333,
+                longitud: double.tryParse(longCtrl.text) ?? -78.6167,
                 espaciosTotales: espacios,
                 espaciosLibres: espacios,
                 tarifaHora: double.tryParse(tarifaCtrl.text) ?? 1.0,
