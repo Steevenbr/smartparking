@@ -1,9 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../theme.dart';
 import '../models/parqueadero.dart';
-import '../models/tarifa_config.dart';
 import '../services/parking_logic_service.dart';
-import '../services/tarifa_service.dart';
 
 // RF-15: muestra el tiempo y el costo acumulado en tiempo real.
 // RF-06: registra la salida y calcula el costo final con fracciones.
@@ -25,9 +24,7 @@ class SesionActivaScreen extends StatefulWidget {
 
 class _SesionActivaScreenState extends State<SesionActivaScreen> {
   final _logic = ParkingLogicService();
-  final _tarifas = TarifaService();
   Timer? _timer;
-  TarifaConfig _cfg = TarifaConfig();
   Duration _transcurrido = Duration.zero;
   double _costo = 0;
   bool _cerrando = false;
@@ -35,19 +32,14 @@ class _SesionActivaScreenState extends State<SesionActivaScreen> {
   @override
   void initState() {
     super.initState();
-    _cargarConfig();
     // RF-15: actualiza cada segundo el tiempo y el costo.
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       setState(() {
         _transcurrido = DateTime.now().difference(widget.horaEntrada);
-        _costo = _logic.calcularCosto(widget.horaEntrada, DateTime.now(), _cfg);
+        _costo = _logic.calcularCosto(widget.horaEntrada, DateTime.now(),
+            widget.parqueadero.tarifaHora, widget.parqueadero.minutosFraccion);
       });
     });
-  }
-
-  Future<void> _cargarConfig() async {
-    final cfg = await _tarifas.getConfig();
-    setState(() => _cfg = cfg);
   }
 
   String _formato(Duration d) {
@@ -61,6 +53,8 @@ class _SesionActivaScreenState extends State<SesionActivaScreen> {
       widget.registroId,
       widget.parqueadero.id,
       widget.horaEntrada,
+      widget.parqueadero.tarifaHora,
+      widget.parqueadero.minutosFraccion,
     );
     _timer?.cancel();
     if (!mounted) return;
@@ -103,47 +97,171 @@ class _SesionActivaScreenState extends State<SesionActivaScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Sesión de parqueo activa')),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(widget.parqueadero.nombre,
-                  style: const TextStyle(
-                      fontSize: 20, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 32),
-              const Text('Tiempo transcurrido'),
-              Text(_formato(_transcurrido),
-                  style: const TextStyle(
-                      fontSize: 40, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 24),
-              const Text('Costo acumulado (en tiempo real)'),
-              Text('\$${_costo.toStringAsFixed(2)}',
-                  style: const TextStyle(
-                      fontSize: 48,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.teal)),
-              const SizedBox(height: 12),
-              Text(
-                'Tarifa: \$${_cfg.tarifaFraccion} cada ${_cfg.minutosFraccion} min',
-                style: TextStyle(color: Colors.grey[600]),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Tarjeta del garaje con degradado.
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                gradient: kHeaderGradient,
+                borderRadius: BorderRadius.circular(20),
               ),
-              const SizedBox(height: 48),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Colors.red,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Row(
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Icon(Icons.local_parking_rounded,
+                        color: Colors.white, size: 26),
                   ),
-                  icon: const Icon(Icons.logout),
-                  onPressed: _cerrando ? null : _registrarSalida,
-                  label: Text(_cerrando ? 'Procesando...' : 'Registrar salida y pagar'),
-                ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.parqueadero.nombre,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '\$${widget.parqueadero.tarifaHora}/hora · fracción ${widget.parqueadero.minutosFraccion} min',
+                          style: const TextStyle(
+                              color: Colors.white70, fontSize: 13),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+            const SizedBox(height: 20),
+
+            // Tarjeta destacada: estado, tiempo y costo.
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.06),
+                    blurRadius: 16,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  // Indicador "En curso".
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        width: 10,
+                        height: 10,
+                        decoration: const BoxDecoration(
+                          color: Colors.green,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'EN CURSO',
+                        style: TextStyle(
+                          color: Colors.green,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1.2,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  Text('TIEMPO TRANSCURRIDO',
+                      style: TextStyle(
+                          color: Colors.grey[500],
+                          fontSize: 12,
+                          letterSpacing: 1)),
+                  const SizedBox(height: 4),
+                  Text(
+                    _formato(_transcurrido),
+                    style: const TextStyle(
+                      fontSize: 44,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF1F2937),
+                      letterSpacing: 2,
+                    ),
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 20),
+                    child: Divider(),
+                  ),
+                  Text('COSTO ACUMULADO',
+                      style: TextStyle(
+                          color: Colors.grey[500],
+                          fontSize: 12,
+                          letterSpacing: 1)),
+                  const SizedBox(height: 4),
+                  Text(
+                    '\$${_costo.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      fontSize: 56,
+                      fontWeight: FontWeight.bold,
+                      color: kAccent,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: kAccentSoft,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.bolt, size: 14, color: kAccent),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Actualizándose en tiempo real',
+                          style: TextStyle(
+                              color: kAccent,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 28),
+
+            // Botón de salida.
+            FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.red,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+              ),
+              icon: const Icon(Icons.logout),
+              onPressed: _cerrando ? null : _registrarSalida,
+              label: Text(
+                  _cerrando ? 'Procesando...' : 'Registrar salida y pagar'),
+            ),
+          ],
         ),
       ),
     );

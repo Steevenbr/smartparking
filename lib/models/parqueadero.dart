@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-// Modelo de un parqueadero (RF-02, RF-03, RF-20, RF-27).
+// Modelo de un parqueadero (RF-02, RF-03, RF-20, RF-21, RF-27).
 class Parqueadero {
   final String id;
   final String ownerId; // dueño que lo creó (RF-20, RF-22)
@@ -11,6 +11,9 @@ class Parqueadero {
   final int espaciosTotales;
   final int espaciosLibres;
   final double tarifaHora;
+  final int minutosFraccion; // cada cuántos minutos se cobra (RF-21, RF-23)
+  final String horaApertura; // ej. "08:00" (RF-21)
+  final String horaCierre; // ej. "20:00" (RF-21)
   final bool activo;
 
   const Parqueadero({
@@ -23,8 +26,14 @@ class Parqueadero {
     required this.espaciosTotales,
     required this.espaciosLibres,
     required this.tarifaHora,
+    this.minutosFraccion = 15,
+    this.horaApertura = '08:00',
+    this.horaCierre = '20:00',
     this.activo = true,
   });
+
+  // Precio de cada fracción derivado de la tarifa por hora del garaje.
+  double get precioFraccion => tarifaHora * (minutosFraccion / 60.0);
 
   // Convierte un documento de Firestore en un objeto Parqueadero.
   factory Parqueadero.fromFirestore(DocumentSnapshot doc) {
@@ -39,6 +48,9 @@ class Parqueadero {
       espaciosTotales: data['espaciosTotales'] ?? 0,
       espaciosLibres: data['espaciosLibres'] ?? 0,
       tarifaHora: (data['tarifaHora'] ?? 0).toDouble(),
+      minutosFraccion: data['minutosFraccion'] ?? 15,
+      horaApertura: data['horaApertura'] ?? '08:00',
+      horaCierre: data['horaCierre'] ?? '20:00',
       activo: data['activo'] ?? true,
     );
   }
@@ -53,6 +65,9 @@ class Parqueadero {
         'espaciosTotales': espaciosTotales,
         'espaciosLibres': espaciosLibres,
         'tarifaHora': tarifaHora,
+        'minutosFraccion': minutosFraccion,
+        'horaApertura': horaApertura,
+        'horaCierre': horaCierre,
         'activo': activo,
       };
 }

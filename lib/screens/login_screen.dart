@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme.dart';
 import 'package:firebase_auth/firebase_auth.dart'; // <--- Importante para la conexión real
 import 'home_screen.dart';
 import 'register_screen.dart';
@@ -105,7 +106,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   const Icon(
                     Icons.local_parking_rounded,
                     size: 80,
-                    color: Colors.blue,
+                    color: kPrimary,
                   ),
                   const SizedBox(height: 16),
                   const Text(
@@ -157,7 +158,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       : ElevatedButton(
                     onPressed: _submitLogin,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
+                      backgroundColor: kPrimary,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

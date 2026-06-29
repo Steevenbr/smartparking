@@ -26,9 +26,20 @@ class ParqueaderoService {
     await _col.add(p.toMap());
   }
 
-  // RF-20: Desactivar un parqueadero (admin).
+  // RF-20 + RF-21: Editar los datos de un parqueadero existente.
+  Future<void> actualizarParqueadero(
+      String id, Map<String, dynamic> datos) async {
+    await _col.doc(id).update(datos);
+  }
+
+  // RF-20: Desactivar un parqueadero (borrado lógico).
   Future<void> desactivarParqueadero(String id) async {
     await _col.doc(id).update({'activo': false});
+  }
+
+  // RF-20: Reactivar un parqueadero desactivado.
+  Future<void> reactivarParqueadero(String id) async {
+    await _col.doc(id).update({'activo': true});
   }
 
   // RF-27: Ajusta la cantidad de espacios libres (+1 al salir, -1 al entrar).
