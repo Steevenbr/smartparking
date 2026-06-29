@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
@@ -84,7 +85,7 @@ class _MapaScreenState extends State<MapaScreen> {
                 width: 30,
                 height: 30,
                 child: const Icon(Icons.my_location,
-                    color: Colors.blue, size: 28),
+                    color: kPrimary, size: 28),
               ),
             );
           }

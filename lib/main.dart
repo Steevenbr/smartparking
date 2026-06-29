@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart'; // <--- Importante
 import 'firebase_options.dart'; // <--- Importante
 import 'screens/login_screen.dart';
+import 'theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -29,10 +30,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'SmartParking',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        useMaterial3: true,
-      ),
+      theme: appTheme,
       home: const LoginScreen(),
     );
   }

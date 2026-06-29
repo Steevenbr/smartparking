@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme.dart';
 import '../models/parqueadero.dart';
 import '../services/parking_logic_service.dart';
 import 'sesion_activa_screen.dart';
@@ -68,7 +69,7 @@ class DetalleParqueaderoScreen extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: Colors.blue),
+          Icon(icon, color: kPrimary),
           const SizedBox(width: 16),
           Expanded(
             child: Column(

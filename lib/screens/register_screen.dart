@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme.dart';
 import 'package:firebase_auth/firebase_auth.dart'; // <--- Conexión real a Firebase
 import '../services/auth_service.dart';
 
@@ -237,7 +238,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       : ElevatedButton(
                     onPressed: _submitRegister,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
+                      backgroundColor: kPrimary,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -275,9 +276,9 @@ class _RolCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
         decoration: BoxDecoration(
-          color: seleccionado ? Colors.blue.shade50 : Colors.transparent,
+          color: seleccionado ? kPrimarySoft : Colors.transparent,
           border: Border.all(
-            color: seleccionado ? Colors.blue : Colors.grey.shade400,
+            color: seleccionado ? kPrimary : Colors.grey.shade400,
             width: seleccionado ? 2 : 1,
           ),
           borderRadius: BorderRadius.circular(12),
@@ -285,14 +286,14 @@ class _RolCard extends StatelessWidget {
         child: Column(
           children: [
             Icon(icon,
-                size: 32, color: seleccionado ? Colors.blue : Colors.grey),
+                size: 32, color: seleccionado ? kPrimary : Colors.grey),
             const SizedBox(height: 8),
             Text(
               titulo,
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontWeight: FontWeight.w600,
-                color: seleccionado ? Colors.blue : Colors.black87,
+                color: seleccionado ? kPrimary : Colors.black87,
               ),
             ),
           ],
