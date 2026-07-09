@@ -8,6 +8,8 @@ import 'historial_screen.dart';
 import 'mapa_screen.dart';
 import 'tarifas_screen.dart';
 import 'mis_garajes_screen.dart';
+import 'reportes_admin_screen.dart'; // ⬅️ Importamos la nueva pantalla de reportes
+import 'reportes_graficos_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -67,12 +69,19 @@ class _HomeScreenState extends State<HomeScreen> {
       },
     ];
 
+    // MODIFICADO: Agregamos la tarjeta de reportes solicitada al menú del dueño (RF-08)
     final List<Map<String, dynamic>> menuDueno = [
       {
         'title': 'Mis Garajes',
         'icon': Icons.store_mall_directory_rounded,
         'color': Colors.indigo,
         'pantalla': const MisGarajesScreen(),
+      },
+      {
+        'title': 'Reportes y Ganancias',
+        'icon': Icons.analytics_rounded,
+        'color': Colors.orange.shade800,
+        'pantalla': const ReportesGraficosScreen(), // ⬅️ Apunta a la nueva interfaz analítica
       },
     ];
 
@@ -83,30 +92,30 @@ class _HomeScreenState extends State<HomeScreen> {
       body: _rol == null
           ? const Center(child: CircularProgressIndicator())
           : SafeArea(
-              bottom: false,
-              child: CustomScrollView(
-                slivers: [
-                  // Encabezado con degradado.
-                  SliverToBoxAdapter(child: _header(esDueno)),
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
-                    sliver: SliverGrid(
-                      gridDelegate:
-                          const SliverGridDelegateWithMaxCrossAxisExtent(
-                        maxCrossAxisExtent: 200,
-                        childAspectRatio: 1.05,
-                        crossAxisSpacing: 16,
-                        mainAxisSpacing: 16,
-                      ),
-                      delegate: SliverChildBuilderDelegate(
-                        (context, index) => _menuCard(context, menu[index]),
-                        childCount: menu.length,
-                      ),
-                    ),
-                  ),
-                ],
+        bottom: false,
+        child: CustomScrollView(
+          slivers: [
+            // Encabezado con degradado.
+            SliverToBoxAdapter(child: _header(esDueno)),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+              sliver: SliverGrid(
+                gridDelegate:
+                const SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: 200,
+                  childAspectRatio: 1.05,
+                  crossAxisSpacing: 16,
+                  mainAxisSpacing: 16,
+                ),
+                delegate: SliverChildBuilderDelegate(
+                      (context, index) => _menuCard(context, menu[index]),
+                  childCount: menu.length,
+                ),
               ),
             ),
+          ],
+        ),
+      ),
     );
   }
 
