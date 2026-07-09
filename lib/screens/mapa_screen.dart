@@ -3,12 +3,14 @@ import '../theme.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:url_launcher/url_launcher.dart'; // Librería para lanzar la navegación
 import '../models/parqueadero.dart';
 import '../services/parqueadero_service.dart';
 import '../services/ubicacion_service.dart';
 import 'detalle_parqueadero_screen.dart';
 
-// RF-02 y RF-12: mapa interactivo con los garajes agregados y cercania por GPS.
+// RF-02 y RF-12: mapa interactivo con los garajes agregados y cercanía por GPS.
+// RF-14: Navegación «Cómo llegar» integrada de forma exclusiva para Android.
 class MapaScreen extends StatefulWidget {
   const MapaScreen({super.key});
 
@@ -38,6 +40,34 @@ class _MapaScreenState extends State<MapaScreen> {
     }
   }
 
+  // RF-14: Navegación «Cómo llegar» corregida y optimizada al 100% para Android
+  Future<void> _trazarRutaComoLlegar(double lat, double lng) async {
+    // Intentamos abrir la aplicación nativa de Google Maps en modo navegación directa
+    final String googleMapsIntent = 'google.navigation:q=$lat,$lng&mode=d';
+
+    // URL web alternativa oficial de Google Maps que traza la ruta desde la ubicación actual
+    final String googleMapsWeb = 'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng&travelmode=driving';
+
+    final Uri intentUri = Uri.parse(googleMapsIntent);
+    final Uri webUri = Uri.parse(googleMapsWeb);
+
+    try {
+      // Intentamos lanzar el intent nativo de Android primero
+      if (await canLaunchUrl(intentUri)) {
+        await launchUrl(intentUri);
+      } else {
+        // Si el emulador no tiene la app nativa instalada, forzamos la apertura en el navegador de Android
+        await launchUrl(webUri, mode: LaunchMode.externalApplication);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No se pudo abrir la navegación GPS: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -46,7 +76,7 @@ class _MapaScreenState extends State<MapaScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.my_location),
-            tooltip: 'Mi ubicacion',
+            tooltip: 'Mi ubicación',
             onPressed: _ubicarme,
           ),
         ],
@@ -58,24 +88,24 @@ class _MapaScreenState extends State<MapaScreen> {
 
           final marcadores = garajes
               .map((p) => Marker(
-                    point: LatLng(p.latitud, p.longitud),
-                    width: 44,
-                    height: 44,
-                    child: GestureDetector(
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              DetalleParqueaderoScreen(parqueadero: p),
-                        ),
-                      ),
-                      child: Icon(
-                        Icons.location_on,
-                        size: 44,
-                        color: p.espaciosLibres > 0 ? Colors.green : Colors.red,
-                      ),
-                    ),
-                  ))
+            point: LatLng(p.latitud, p.longitud),
+            width: 44,
+            height: 44,
+            child: GestureDetector(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) =>
+                      DetalleParqueaderoScreen(parqueadero: p),
+                ),
+              ),
+              child: Icon(
+                Icons.location_on,
+                size: 44,
+                color: p.espaciosLibres > 0 ? Colors.green : Colors.red,
+              ),
+            ),
+          ))
               .toList();
 
           if (_miPosicion != null) {
@@ -104,7 +134,7 @@ class _MapaScreenState extends State<MapaScreen> {
                   children: [
                     TileLayer(
                       urlTemplate:
-                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                       userAgentPackageName: 'com.example.smart_parking',
                     ),
                     MarkerLayer(markers: marcadores),
@@ -123,7 +153,7 @@ class _MapaScreenState extends State<MapaScreen> {
     if (garajes.isEmpty) {
       return const Padding(
         padding: EdgeInsets.all(16),
-        child: Text('No hay garajes registrados todavia.'),
+        child: Text('No hay garajes registrados todavía.'),
       );
     }
 
@@ -148,7 +178,7 @@ class _MapaScreenState extends State<MapaScreen> {
         padding: const EdgeInsets.all(12),
         children: [
           Text(
-            _miPosicion != null ? 'Garajes mas cercanos a ti' : 'Garajes',
+            _miPosicion != null ? 'Garajes más cercanos a ti' : 'Garajes',
             style: const TextStyle(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
@@ -168,11 +198,22 @@ class _MapaScreenState extends State<MapaScreen> {
                   color: p.espaciosLibres > 0 ? Colors.green : Colors.red),
               title: Text(p.nombre),
               subtitle:
-                  Text('Libres: ${p.espaciosLibres} / ${p.espaciosTotales}'),
-              trailing: distancia.isNotEmpty
-                  ? Text(distancia,
-                      style: const TextStyle(fontWeight: FontWeight.bold))
-                  : null,
+              Text('Libres: ${p.espaciosLibres} / ${p.espaciosTotales}'),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (distancia.isNotEmpty)
+                    Text(distancia,
+                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(width: 8),
+                  // RF-14: Botón directo para iniciar la navegación GPS en Android
+                  IconButton(
+                    icon: const Icon(Icons.navigation, color: Colors.blue),
+                    tooltip: 'Cómo llegar',
+                    onPressed: () => _trazarRutaComoLlegar(p.latitud, p.longitud),
+                  ),
+                ],
+              ),
               onTap: () {
                 _mapController.move(LatLng(p.latitud, p.longitud), 16);
               },
