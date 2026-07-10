@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import '../services/auth_service.dart';
 import '../theme.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // <--- Importante para la conexión real
+import 'package:firebase_auth/firebase_auth.dart';
 import 'home_screen.dart';
 import 'register_screen.dart';
 
@@ -16,7 +17,79 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isPasswordVisible = false;
-  bool _isLoading = false; // Estado para mostrar un indicador de carga
+  bool _isLoading = false;
+
+  // RF-10: Diálogo emergente para la solicitud de restablecimiento de contraseña
+  void _mostrarDialogoRecuperacion() {
+    final TextEditingController correoRecuperacionController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Recuperar Contraseña'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Introduce tu correo electrónico registrado y te enviaremos un enlace para restablecer tu contraseña.',
+                style: TextStyle(fontSize: 13, color: Colors.grey),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: correoRecuperacionController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(
+                  labelText: 'Correo Electrónico',
+                  prefixIcon: Icon(Icons.email_outlined),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                final email = correoRecuperacionController.text.trim();
+                if (email.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Por favor, ingresa tu correo.')),
+                  );
+                  return;
+                }
+
+                try {
+                  // Consume de manera nativa tu AuthService unificado
+                  await AuthService().recuperarContrasena(email);
+                  if (context.mounted) Navigator.pop(context);
+
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('¡Correo de recuperación enviado con éxito! Revisa tu bandeja.'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
+                    );
+                  }
+                }
+              },
+              child: const Text('Enviar'),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
   @override
   void dispose() {
@@ -32,7 +105,6 @@ class _LoginScreenState extends State<LoginScreen> {
       });
 
       try {
-        // Petición real de inicio de sesión a Firebase
         await FirebaseAuth.instance.signInWithEmailAndPassword(
           email: _emailController.text.trim(),
           password: _passwordController.text.trim(),
@@ -46,7 +118,6 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           );
 
-          // Ir al panel principal
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (context) => const HomeScreen()),
@@ -150,11 +221,26 @@ class _LoginScreenState extends State<LoginScreen> {
                       return null;
                     },
                   ),
-                  const SizedBox(height: 24),
+
+                  // CORRECCIÓN: Botón alineado de forma inmediata para una mejor experiencia UX
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: _mostrarDialogoRecuperacion,
+                      child: const Text(
+                        '¿Olvidaste tu contraseña?',
+                        style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
 
                   // Botón de Iniciar Sesión / Cargando
                   _isLoading
-                      ? const Center(child: CircularProgressIndicator())
+                      ? const Center(child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: 8.0),
+                    child: CircularProgressIndicator(),
+                  ))
                       : ElevatedButton(
                     onPressed: _submitLogin,
                     style: ElevatedButton.styleFrom(
