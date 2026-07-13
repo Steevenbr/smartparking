@@ -25,6 +25,7 @@ class AuthService {
         'nombre': nombre.trim(),
         'email': email.trim(),
         'rol': rol, // RF-22
+        'favoritos': [], // RF-13: Inicializa la lista vacía para evitar nulos en favoritos
         'creadoEn': Timestamp.now(),
       });
     } catch (e) {
