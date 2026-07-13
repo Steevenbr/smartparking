@@ -8,8 +8,8 @@ import 'historial_screen.dart';
 import 'mapa_screen.dart';
 import 'tarifas_screen.dart';
 import 'mis_garajes_screen.dart';
-import 'reportes_admin_screen.dart'; // ⬅️ Importamos la nueva pantalla de reportes
 import 'reportes_graficos_screen.dart';
+import 'edit_profile_screen.dart'; // ⬅️ IMPORTANTE: Enlazamos la pantalla de edición del RF-11
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -36,6 +36,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final esDueno = _rol == 'dueno';
 
+    // RF-11: Se añade la opción 'Mi Perfil y Vehículo' dentro de la cuadrícula del Conductor
     final List<Map<String, dynamic>> menuConductor = [
       {
         'title': 'Mapa del Parqueadero',
@@ -67,9 +68,14 @@ class _HomeScreenState extends State<HomeScreen> {
         'color': Colors.orange,
         'pantalla': const HistorialScreen(),
       },
+      {
+        'title': 'Mi Perfil y Vehículo',
+        'icon': Icons.manage_accounts_rounded,
+        'color': Colors.blueGrey,
+        'pantalla': const EditProfileScreen(), // ⬅️ Abre el formulario del RF-11
+      },
     ];
 
-    // MODIFICADO: Agregamos la tarjeta de reportes solicitada al menú del dueño (RF-08)
     final List<Map<String, dynamic>> menuDueno = [
       {
         'title': 'Mis Garajes',
@@ -81,7 +87,7 @@ class _HomeScreenState extends State<HomeScreen> {
         'title': 'Reportes y Ganancias',
         'icon': Icons.analytics_rounded,
         'color': Colors.orange.shade800,
-        'pantalla': const ReportesGraficosScreen(), // ⬅️ Apunta a la nueva interfaz analítica
+        'pantalla': const ReportesGraficosScreen(),
       },
     ];
 
@@ -95,7 +101,6 @@ class _HomeScreenState extends State<HomeScreen> {
         bottom: false,
         child: CustomScrollView(
           slivers: [
-            // Encabezado con degradado.
             SliverToBoxAdapter(child: _header(esDueno)),
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
@@ -119,7 +124,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // Encabezado superior con degradado, saludo, rol y botón de salir.
   Widget _header(bool esDueno) {
     return Container(
       width: double.infinity,
@@ -148,11 +152,22 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               const Spacer(),
+              // RF-11: Botón de acceso directo rápido en la barra superior para ambos roles
+              IconButton(
+                icon: const Icon(Icons.account_circle_outlined, color: Colors.white),
+                tooltip: 'Editar Perfil',
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const EditProfileScreen()),
+                  );
+                },
+              ),
               IconButton(
                 icon: const Icon(Icons.logout_rounded, color: Colors.white),
                 tooltip: 'Cerrar sesión',
                 onPressed: () async {
-                  await AuthService().cerrarSesion(); // RF-09
+                  await AuthService().cerrarSesion();
                   if (context.mounted) {
                     Navigator.pushReplacement(
                       context,
@@ -213,7 +228,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // Tarjeta de cada opción del menú.
   Widget _menuCard(BuildContext context, Map<String, dynamic> option) {
     final Color color = option['color'] as Color;
     return Material(
