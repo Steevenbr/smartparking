@@ -46,12 +46,12 @@ class ParkingLogicService {
   // RF-05 + RF-06: Registrar salida. Costo con horas del servidor y la tarifa
   // del garaje guardada en el registro.
   Future<double> registrarSalida(
-    String registroId,
-    String parqueaderoId,
-    DateTime horaEntradaRespaldo,
-    double tarifaHoraRespaldo,
-    int minutosFraccionRespaldo,
-  ) async {
+      String registroId,
+      String parqueaderoId,
+      DateTime horaEntradaRespaldo,
+      double tarifaHoraRespaldo,
+      int minutosFraccionRespaldo,
+      ) async {
     // 1. Marcamos la salida con la hora del servidor.
     await _col.doc(registroId).update({
       'horaSalida': FieldValue.serverTimestamp(),
@@ -72,7 +72,7 @@ class ParkingLogicService {
         entrada = (data['horaEntrada'] as Timestamp).toDate();
       }
       if (data['horaSalida'] is Timestamp) {
-        salida = (data['horaSalida'] as Timestamp).toDate();
+        text_salida: salida = (data['horaSalida'] as Timestamp).toDate();
       }
       if (data['tarifaHora'] != null) {
         tarifaHora = (data['tarifaHora']).toDouble();
@@ -98,6 +98,23 @@ class ParkingLogicService {
         .where('usuarioId', isEqualTo: uid)
         .snapshots()
         .map((snap) =>
-            snap.docs.map((d) => Registro.fromFirestore(d)).toList());
+        snap.docs.map((d) => Registro.fromFirestore(d)).toList());
+  }
+
+  // NUEVO MÉTODO: Busca si el usuario tiene una sesión "activa" (sin salida)
+  Future<DocumentSnapshot?> obtenerSesionActiva() async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return null;
+
+    final query = await _col
+        .where('usuarioId', isEqualTo: uid)
+        .where('estado', isEqualTo: 'activo')
+        .limit(1)
+        .get();
+
+    if (query.docs.isNotEmpty) {
+      return query.docs.first;
+    }
+    return null;
   }
 }
