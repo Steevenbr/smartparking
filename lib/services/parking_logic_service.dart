@@ -101,7 +101,7 @@ class ParkingLogicService {
         snap.docs.map((d) => Registro.fromFirestore(d)).toList());
   }
 
-  // NUEVO MÉTODO: Busca si el usuario tiene una sesión "activa" (sin salida)
+  // NUEVO METODO Busca si el usuario tiene una sesión "activa" (sin salida)
   Future<DocumentSnapshot?> obtenerSesionActiva() async {
     final uid = _auth.currentUser?.uid;
     if (uid == null) return null;
