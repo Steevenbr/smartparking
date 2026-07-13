@@ -60,6 +60,7 @@ class _SesionActivaScreenState extends State<SesionActivaScreen> {
     if (!mounted) return;
     showDialog(
       context: context,
+      barrierDismissible: false, // Obliga a presionar el botón de "Aceptar"
       builder: (_) => AlertDialog(
         title: const Text('Comprobante de salida'),
         content: Column(
@@ -78,7 +79,7 @@ class _SesionActivaScreenState extends State<SesionActivaScreen> {
           TextButton(
             onPressed: () {
               Navigator.pop(context); // cierra diálogo
-              Navigator.pop(context); // vuelve atrás
+              Navigator.pop(context); // regresa al HomeScreen, el cual refrescará y quitará el banner
             },
             child: const Text('Aceptar'),
           ),
@@ -96,7 +97,14 @@ class _SesionActivaScreenState extends State<SesionActivaScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Sesión de parqueo activa')),
+      appBar: AppBar(
+        title: const Text('Sesión de parqueo activa'),
+        // Cambiamos el comportamiento de atrás del AppBar para regresar de forma segura
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
         child: Column(
