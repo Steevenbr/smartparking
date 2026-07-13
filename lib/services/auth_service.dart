@@ -85,4 +85,29 @@ class AuthService {
     }
     return e.toString();
   }
+
+  // RF-11: Actualiza los datos de perfil y vehículo del usuario en Firestore
+  Future<void> actualizarPerfilYVehiculo({
+    required String nombre,
+    required String placa,
+    required String modelo,
+    required String color,
+  }) async {
+    final id = uid;
+    if (id.isEmpty) throw 'No hay ninguna sesión activa.';
+
+    try {
+      await _db.collection('usuarios').doc(id).update({
+        'nombre': nombre.trim(),
+        'vehiculo': {
+          'placa': placa.trim().toUpperCase(),
+          'modelo': modelo.trim(),
+          'color': color.trim(),
+        },
+        'actualizadoEn': Timestamp.now(),
+      });
+    } catch (e) {
+      throw 'Error al actualizar los datos: $e';
+    }
+  }
 }
