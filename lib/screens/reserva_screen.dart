@@ -37,22 +37,44 @@ class _ReservaScreenState extends State<ReservaScreen> {
       return;
     }
     final p = _lista.firstWhere((x) => x.id == _seleccionadoId);
+
+    // Validación previa en pantalla (RF-04)
+    if (p.espaciosLibres <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Ese parqueadero no tiene espacios disponibles.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     setState(() => _guardando = true);
-    await _reservas.crearReserva(
-      parqueaderoId: p.id,
-      parqueaderoNombre: p.nombre,
-      fecha: _fechaTexto(),
-      hora: _horaTexto(),
-      duracionHoras: int.tryParse(_duracionCtrl.text) ?? 1,
-    );
-    if (!mounted) return;
-    setState(() => _guardando = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-          content: Text('Reserva creada con éxito.'),
-          backgroundColor: Colors.green),
-    );
-    Navigator.pop(context);
+
+    try {
+      await _reservas.crearReserva(
+        parqueaderoId: p.id,
+        parqueaderoNombre: p.nombre,
+        fecha: _fechaTexto(),
+        hora: _horaTexto(),
+        duracionHoras: int.tryParse(_duracionCtrl.text) ?? 1,
+      );
+      if (!mounted) return;
+      setState(() => _guardando = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Reserva creada con éxito.'),
+            backgroundColor: Colors.green),
+      );
+      Navigator.pop(context);
+    } catch (e) {
+      // Si el parqueadero se llenó justo antes, mostramos el error.
+      if (!mounted) return;
+      setState(() => _guardando = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$e'), backgroundColor: Colors.red),
+      );
+    }
   }
 
   @override
@@ -94,13 +116,17 @@ class _ReservaScreenState extends State<ReservaScreen> {
                 DropdownButtonFormField<String>(
                   value: _seleccionadoId,
                   isExpanded: true,
-                  decoration: const InputDecoration(border: OutlineInputBorder()),
+                  decoration:
+                      const InputDecoration(border: OutlineInputBorder()),
                   hint: const Text('Selecciona un parqueadero'),
+                  // Mostramos los espacios libres de cada parqueadero (RF-04)
                   items: _lista
                       .map((p) => DropdownMenuItem<String>(
                             value: p.id,
-                            child:
-                                Text(p.nombre, overflow: TextOverflow.ellipsis),
+                            child: Text(
+                              '${p.nombre} (${p.espaciosLibres} libres)',
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ))
                       .toList(),
                   onChanged: (v) => setState(() => _seleccionadoId = v),
@@ -152,7 +178,8 @@ class _ReservaScreenState extends State<ReservaScreen> {
                 const SizedBox(height: 28),
                 FilledButton(
                   onPressed: _guardando ? null : _guardar,
-                  child: Text(_guardando ? 'Guardando...' : 'Confirmar reserva'),
+                  child:
+                      Text(_guardando ? 'Guardando...' : 'Confirmar reserva'),
                 ),
               ],
             ),
