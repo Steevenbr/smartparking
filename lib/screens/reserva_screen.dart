@@ -126,7 +126,7 @@ class _ReservaScreenState extends State<ReservaScreen> {
                     style: TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
-                  value: _seleccionadoId,
+                  initialValue: _seleccionadoId,
                   isExpanded: true,
                   decoration:
                       const InputDecoration(border: OutlineInputBorder()),

@@ -1,11 +1,57 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/reserva_service.dart';
+import '../services/comprobante_service.dart';
+import '../theme.dart';
+import '../widgets/app_dialog.dart';
 
 // RF-18: Cancelación de reservas con reembolso parcial.
-// Muestra las reservas del usuario, lo que pagó, y permite cancelar las activas.
-class MisReservasScreen extends StatelessWidget {
+// RF-19: Comprobante digital descargable (PDF).
+class MisReservasScreen extends StatefulWidget {
   const MisReservasScreen({super.key});
+
+  @override
+  State<MisReservasScreen> createState() => _MisReservasScreenState();
+}
+
+class _MisReservasScreenState extends State<MisReservasScreen> {
+  bool _descargando = false;
+
+  Future<void> _descargarComprobante(
+    String reservaId,
+    Map<String, dynamic> data,
+  ) async {
+    if (_descargando) return;
+    setState(() => _descargando = true);
+    try {
+      final guardado = await ComprobanteService().descargarComprobante(
+        reservaId: reservaId,
+        data: data,
+      );
+      if (!mounted) return;
+
+      await AppDialog.success(
+        context: context,
+        title: 'Comprobante descargado',
+        message: 'El PDF se guardó en tu dispositivo.',
+        primaryLabel: 'Aceptar',
+        extra: AppDialog.summaryBox(
+          children: [
+            AppDialog.summaryRow('Archivo', guardado.nombreArchivo),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      await AppDialog.error(
+        context: context,
+        title: 'No se pudo descargar',
+        message: '$e',
+      );
+    } finally {
+      if (mounted) setState(() => _descargando = false);
+    }
+  }
 
   Future<void> _confirmarCancelacion(
     BuildContext context,
@@ -19,42 +65,37 @@ class MisReservasScreen extends StatelessWidget {
     final penalidadPct =
         (ReservaService.penalidadCancelacion * 100).toStringAsFixed(0);
 
-    final confirmar = await showDialog<bool>(
+    final confirmar = await AppDialog.confirm(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Cancelar reserva'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('¿Seguro que deseas cancelar tu reserva en $nombre?'),
-            const SizedBox(height: 16),
-            const Divider(height: 1),
-            const SizedBox(height: 12),
-            _filaDialogo('Pagaste', '\$${montoPagado.toStringAsFixed(2)}'),
-            _filaDialogo(
-              'Penalidad ($penalidadPct%)',
-              '-\$${penalidad.toStringAsFixed(2)}',
-              color: Colors.red,
-            ),
-            const SizedBox(height: 6),
-            _filaDialogo(
-              'Se te reembolsará',
-              '\$${reembolso.toStringAsFixed(2)}',
-              negrita: true,
-              color: Colors.green,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('No, volver'),
+      title: 'Cancelar reserva',
+      message: '¿Seguro que deseas cancelar tu reserva en $nombre?',
+      icon: Icons.cancel_outlined,
+      iconColor: Colors.red.shade600,
+      confirmLabel: 'Sí, cancelar',
+      cancelLabel: 'No, volver',
+      confirmColor: Colors.red.shade600,
+      extra: AppDialog.summaryBox(
+        children: [
+          AppDialog.summaryRow(
+            'Pagaste',
+            '\$${montoPagado.toStringAsFixed(2)}',
           ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Sí, cancelar'),
+          const SizedBox(height: 8),
+          AppDialog.summaryRow(
+            'Penalidad ($penalidadPct%)',
+            '-\$${penalidad.toStringAsFixed(2)}',
+            valueColor: Colors.red.shade600,
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 10),
+            child: Divider(height: 1),
+          ),
+          AppDialog.summaryRow(
+            'Se te reembolsará',
+            '\$${reembolso.toStringAsFixed(2)}',
+            bold: true,
+            large: true,
+            valueColor: const Color(0xFF16A34A),
           ),
         ],
       ),
@@ -65,45 +106,36 @@ class MisReservasScreen extends StatelessWidget {
     try {
       final devuelto = await service.cancelarReserva(reservaId);
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-              'Reserva cancelada. Reembolso: \$${devuelto.toStringAsFixed(2)}'),
-          backgroundColor: Colors.green,
+      await AppDialog.success(
+        context: context,
+        title: 'Reserva cancelada',
+        message: 'Tu espacio fue liberado y el reembolso quedó registrado.',
+        extra: AppDialog.summaryBox(
+          children: [
+            AppDialog.summaryRow(
+              'Reembolso',
+              '\$${devuelto.toStringAsFixed(2)}',
+              bold: true,
+              large: true,
+              valueColor: const Color(0xFF16A34A),
+            ),
+          ],
         ),
       );
     } catch (e) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$e'), backgroundColor: Colors.red),
+      await AppDialog.error(
+        context: context,
+        title: 'No se pudo cancelar',
+        message: '$e',
       );
     }
-  }
-
-  static Widget _filaDialogo(String label, String valor,
-      {bool negrita = false, Color? color}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: const TextStyle(fontSize: 13.5)),
-          Text(
-            valor,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: negrita ? FontWeight.bold : FontWeight.w600,
-              color: color,
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: kBg,
       appBar: AppBar(title: const Text('Mis reservas')),
       body: StreamBuilder<QuerySnapshot>(
         stream: ReservaService().escucharReservas(),
@@ -117,20 +149,47 @@ class MisReservasScreen extends StatelessWidget {
 
           final docs = snapshot.data?.docs ?? [];
           if (docs.isEmpty) {
-            return const Center(
+            return Center(
               child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Text(
-                  'Todavía no tienes reservas.\n'
-                  'Crea una desde "Reservar Lugar".',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.grey),
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 88,
+                      height: 88,
+                      decoration: const BoxDecoration(
+                        color: kPrimarySoft,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.event_note_outlined,
+                          size: 42, color: kPrimary),
+                    ),
+                    const SizedBox(height: 18),
+                    const Text(
+                      'Todavía no tienes reservas',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Crea una desde "Reservar Lugar" y aquí\n'
+                      'podrás ver el comprobante digital.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             );
           }
 
-          // Mostramos primero las reservas activas.
           docs.sort((a, b) {
             final ea = (a.data() as Map<String, dynamic>)['estado'] ?? '';
             final eb = (b.data() as Map<String, dynamic>)['estado'] ?? '';
@@ -139,152 +198,295 @@ class MisReservasScreen extends StatelessWidget {
           });
 
           return ListView.builder(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
             itemCount: docs.length,
             itemBuilder: (context, i) {
               final doc = docs[i];
               final data = doc.data() as Map<String, dynamic>;
-
-              final activa = data['estado'] == 'activa';
-              final nombre = data['parqueaderoNombre'] ?? 'Parqueadero';
-              final montoPagado = (data['montoPagado'] ?? 0).toDouble();
-              final montoReembolsado = (data['montoReembolsado'] ?? 0).toDouble();
-
-              return Card(
-                margin: const EdgeInsets.only(bottom: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Encabezado: nombre y estado
-                      Row(
-                        children: [
-                          Icon(
-                            activa ? Icons.event_available : Icons.event_busy,
-                            color: activa ? Colors.green : Colors.grey,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              nombre,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
-                            ),
-                          ),
-                          Chip(
-                            label: Text(
-                              activa ? 'ACTIVA' : 'CANCELADA',
-                              style: const TextStyle(fontSize: 11),
-                            ),
-                            backgroundColor: activa
-                                ? Colors.green.shade100
-                                : Colors.grey.shade300,
-                          ),
-                        ],
-                      ),
-                      const Divider(height: 20),
-
-                      // Fecha y hora
-                      Row(
-                        children: [
-                          const Icon(Icons.calendar_today,
-                              size: 16, color: Colors.grey),
-                          const SizedBox(width: 6),
-                          Text('${data['fecha'] ?? ''}'),
-                          const SizedBox(width: 16),
-                          const Icon(Icons.access_time,
-                              size: 16, color: Colors.grey),
-                          const SizedBox(width: 6),
-                          Text('${data['hora'] ?? ''}'),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-
-                      // Duración
-                      Row(
-                        children: [
-                          const Icon(Icons.hourglass_bottom,
-                              size: 16, color: Colors.grey),
-                          const SizedBox(width: 6),
-                          Text('${data['duracionHoras'] ?? 0} hora(s)'),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-
-                      // Monto pagado por adelantado
-                      Row(
-                        children: [
-                          const Icon(Icons.payments_outlined,
-                              size: 16, color: Colors.grey),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Pagado: \$${montoPagado.toStringAsFixed(2)}',
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          if (data['metodoPago'] != null) ...[
-                            const SizedBox(width: 6),
-                            Text(
-                              '(${data['metodoPago']})',
-                              style: const TextStyle(
-                                  fontSize: 12, color: Colors.grey),
-                            ),
-                          ],
-                        ],
-                      ),
-
-                      // Si fue cancelada, mostramos el reembolso
-                      if (!activa && montoReembolsado > 0) ...[
-                        const SizedBox(height: 6),
-                        Row(
-                          children: [
-                            const Icon(Icons.replay_circle_filled_outlined,
-                                size: 16, color: Colors.blueGrey),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Reembolsado: \$${montoReembolsado.toStringAsFixed(2)}',
-                              style: const TextStyle(
-                                fontSize: 13.5,
-                                color: Colors.blueGrey,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-
-                      // Botón de cancelar (solo si está activa)
-                      if (activa) ...[
-                        const SizedBox(height: 14),
-                        OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.red,
-                            side: const BorderSide(color: Colors.red),
-                            minimumSize: const Size.fromHeight(42),
-                          ),
-                          onPressed: () => _confirmarCancelacion(
-                            context,
-                            doc.id,
-                            nombre,
-                            montoPagado,
-                          ),
-                          icon: const Icon(Icons.cancel_outlined),
-                          label: const Text('Cancelar reserva'),
-                        ),
-                      ],
-                    ],
-                  ),
+              return _ReservaCard(
+                reservaId: doc.id,
+                data: data,
+                descargando: _descargando,
+                onDescargar: () => _descargarComprobante(doc.id, data),
+                onCancelar: () => _confirmarCancelacion(
+                  context,
+                  doc.id,
+                  data['parqueaderoNombre'] ?? 'Parqueadero',
+                  (data['montoPagado'] ?? 0).toDouble(),
                 ),
               );
             },
           );
         },
       ),
+    );
+  }
+}
+
+class _ReservaCard extends StatelessWidget {
+  final String reservaId;
+  final Map<String, dynamic> data;
+  final bool descargando;
+  final VoidCallback onDescargar;
+  final VoidCallback onCancelar;
+
+  const _ReservaCard({
+    required this.reservaId,
+    required this.data,
+    required this.descargando,
+    required this.onDescargar,
+    required this.onCancelar,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final activa = data['estado'] == 'activa';
+    final nombre = data['parqueaderoNombre'] ?? 'Parqueadero';
+    final montoPagado = (data['montoPagado'] ?? 0).toDouble();
+    final montoReembolsado = (data['montoReembolsado'] ?? 0).toDouble();
+    final metodoPago = data['metodoPago'];
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: activa ? kPrimary.withValues(alpha: 0.18) : Colors.grey.shade200,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // Franja superior de color
+          Container(
+            height: 4,
+            decoration: BoxDecoration(
+              color: activa ? const Color(0xFF22C55E) : Colors.grey.shade400,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(18),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: activa
+                            ? const Color(0xFFDCFCE7)
+                            : Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        activa ? Icons.event_available : Icons.event_busy,
+                        color: activa
+                            ? const Color(0xFF16A34A)
+                            : Colors.grey.shade600,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            nombre,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16.5,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Reserva ${_codigoCorto(reservaId)}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: activa
+                            ? const Color(0xFFDCFCE7)
+                            : Colors.grey.shade200,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        activa ? 'ACTIVA' : 'CANCELADA',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: activa
+                              ? const Color(0xFF15803D)
+                              : Colors.grey.shade700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: kBg,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _metaItem(
+                              Icons.calendar_today_outlined,
+                              '${data['fecha'] ?? ''}',
+                            ),
+                          ),
+                          Expanded(
+                            child: _metaItem(
+                              Icons.access_time,
+                              '${data['hora'] ?? ''}',
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _metaItem(
+                              Icons.hourglass_bottom,
+                              '${data['duracionHoras'] ?? 0} hora(s)',
+                            ),
+                          ),
+                          Expanded(
+                            child: _metaItem(
+                              Icons.payments_outlined,
+                              '\$${montoPagado.toStringAsFixed(2)}'
+                              '${metodoPago != null ? ' · $metodoPago' : ''}',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                if (!activa && montoReembolsado > 0) ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFF6FF),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.replay_circle_filled_outlined,
+                            size: 18, color: kPrimary),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Reembolsado: \$${montoReembolsado.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontSize: 13.5,
+                            color: kPrimary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 14),
+                // RF-19: botón de comprobante
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: kPrimary,
+                    side: const BorderSide(color: kPrimary),
+                    minimumSize: const Size.fromHeight(44),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  onPressed: descargando ? null : onDescargar,
+                  icon: descargando
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.picture_as_pdf_outlined),
+                  label: Text(
+                    descargando
+                        ? 'Generando...'
+                        : 'Descargar comprobante',
+                  ),
+                ),
+                if (activa) ...[
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.red.shade600,
+                      side: BorderSide(color: Colors.red.shade300),
+                      minimumSize: const Size.fromHeight(44),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onPressed: onCancelar,
+                    icon: const Icon(Icons.cancel_outlined),
+                    label: const Text('Cancelar reserva'),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _codigoCorto(String id) {
+    if (id.length <= 8) return id.toUpperCase();
+    return id.substring(0, 8).toUpperCase();
+  }
+
+  Widget _metaItem(IconData icon, String text) {
+    return Row(
+      children: [
+        Icon(icon, size: 15, color: Colors.grey.shade600),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

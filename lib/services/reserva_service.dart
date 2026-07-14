@@ -25,7 +25,8 @@ class ReservaService {
 
   // RF-04 + pago anticipado: crea la reserva ya pagada.
   // La transacción valida disponibilidad y descuenta el espacio.
-  Future<void> crearReservaPagada({
+  // Devuelve el ID de la reserva (útil para el comprobante RF-19).
+  Future<String> crearReservaPagada({
     required String parqueaderoId,
     required String parqueaderoNombre,
     required String fecha,
@@ -72,6 +73,8 @@ class ReservaService {
         'creadoEn': Timestamp.now(),
       });
     });
+
+    return refReserva.id;
   }
 
   // Escucha las reservas del usuario actual (RF-18).

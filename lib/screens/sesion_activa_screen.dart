@@ -1,11 +1,13 @@
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../theme.dart';
 import '../models/parqueadero.dart';
+import '../services/comprobante_service.dart';
 import '../services/parking_logic_service.dart';
+import '../widgets/app_dialog.dart';
 
-// RF-15: muestra el tiempo y el costo acumulado en tiempo real.
-// RF-06: registra la salida y calcula el costo final con fracciones.
+// RF-15 / RF-06 / RF-19: sesión activa + descarga de comprobante al salir.
 class SesionActivaScreen extends StatefulWidget {
   final String registroId;
   final Parqueadero parqueadero;
@@ -32,12 +34,15 @@ class _SesionActivaScreenState extends State<SesionActivaScreen> {
   @override
   void initState() {
     super.initState();
-    // RF-15: actualiza cada segundo el tiempo y el costo.
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       setState(() {
         _transcurrido = DateTime.now().difference(widget.horaEntrada);
-        _costo = _logic.calcularCosto(widget.horaEntrada, DateTime.now(),
-            widget.parqueadero.tarifaHora, widget.parqueadero.minutosFraccion);
+        _costo = _logic.calcularCosto(
+          widget.horaEntrada,
+          DateTime.now(),
+          widget.parqueadero.tarifaHora,
+          widget.parqueadero.minutosFraccion,
+        );
       });
     });
   }
@@ -49,43 +54,96 @@ class _SesionActivaScreenState extends State<SesionActivaScreen> {
 
   Future<void> _registrarSalida() async {
     setState(() => _cerrando = true);
-    final total = await _logic.registrarSalida(
-      widget.registroId,
-      widget.parqueadero.id,
-      widget.horaEntrada,
-      widget.parqueadero.tarifaHora,
-      widget.parqueadero.minutosFraccion,
-    );
-    _timer?.cancel();
-    if (!mounted) return;
-    showDialog(
-      context: context,
-      barrierDismissible: false, // Obliga a presionar el botón de "Aceptar"
-      builder: (_) => AlertDialog(
-        title: const Text('Comprobante de salida'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+    try {
+      final total = await _logic.registrarSalida(
+        widget.registroId,
+        widget.parqueadero.id,
+        widget.horaEntrada,
+        widget.parqueadero.tarifaHora,
+        widget.parqueadero.minutosFraccion,
+      );
+      _timer?.cancel();
+
+      String? archivo;
+      String? errorPdf;
+      try {
+        final snap = await FirebaseFirestore.instance
+            .collection('registros')
+            .doc(widget.registroId)
+            .get();
+        final data = Map<String, dynamic>.from(snap.data() ?? {});
+        final p = widget.parqueadero;
+
+        data['parqueaderoNombre'] = data['parqueaderoNombre'] ?? p.nombre;
+        data['parqueaderoDireccion'] =
+            data['parqueaderoDireccion'] ?? p.direccion;
+        data['tarifaHora'] = data['tarifaHora'] ?? p.tarifaHora;
+        data['minutosFraccion'] = data['minutosFraccion'] ?? p.minutosFraccion;
+        data['horaApertura'] = data['horaApertura'] ?? p.horaApertura;
+        data['horaCierre'] = data['horaCierre'] ?? p.horaCierre;
+        data['espaciosTotales'] = data['espaciosTotales'] ?? p.espaciosTotales;
+        data['puesto'] = data['puesto'] ?? 'N/A';
+        data['costo'] = total;
+        data['horaEntrada'] ??= Timestamp.fromDate(widget.horaEntrada);
+        data['horaSalida'] ??= Timestamp.fromDate(DateTime.now());
+
+        final guardado = await ComprobanteService().descargarComprobanteSesion(
+          registroId: widget.registroId,
+          data: data,
+        );
+        archivo = guardado.nombreArchivo;
+      } catch (e) {
+        errorPdf = '$e';
+      }
+
+      if (!mounted) return;
+      final p = widget.parqueadero;
+      await AppDialog.success(
+        context: context,
+        title:
+            archivo != null ? 'Comprobante descargado' : 'Sesion finalizada',
+        message: archivo != null
+            ? 'Abre Archivos > Descargas > SmartParking en tu telefono.'
+            : (errorPdf ??
+                'La sesion termino, pero el PDF no se pudo descargar.'),
+        primaryLabel: 'Aceptar',
+        extra: AppDialog.summaryBox(
           children: [
-            Text('Parqueadero: ${widget.parqueadero.nombre}'),
-            Text('Tiempo: ${_formato(_transcurrido)}'),
-            const SizedBox(height: 8),
-            Text('Total a pagar: \$${total.toStringAsFixed(2)}',
-                style: const TextStyle(
-                    fontSize: 18, fontWeight: FontWeight.bold)),
+            AppDialog.summaryRow('Garaje', p.nombre),
+            const SizedBox(height: 6),
+            AppDialog.summaryRow('Direccion', p.direccion),
+            const SizedBox(height: 6),
+            AppDialog.summaryRow('Tiempo', _formato(_transcurrido)),
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 10),
+              child: Divider(height: 1),
+            ),
+            AppDialog.summaryRow(
+              'Precio a pagar',
+              '\$${total.toStringAsFixed(2)}',
+              bold: true,
+              large: true,
+              valueColor: const Color(0xFF16A34A),
+            ),
+            if (archivo != null) ...[
+              const SizedBox(height: 8),
+              AppDialog.summaryRow('Archivo', archivo),
+            ],
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context); // cierra diálogo
-              Navigator.pop(context); // regresa al HomeScreen, el cual refrescará y quitará el banner
-            },
-            child: const Text('Aceptar'),
-          ),
-        ],
-      ),
-    );
+      );
+
+      if (!mounted) return;
+      Navigator.pop(context);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _cerrando = false);
+      await AppDialog.error(
+        context: context,
+        title: 'Error al registrar salida',
+        message: '$e',
+      );
+    }
   }
 
   @override
@@ -99,7 +157,6 @@ class _SesionActivaScreenState extends State<SesionActivaScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Sesión de parqueo activa'),
-        // Cambiamos el comportamiento de atrás del AppBar para regresar de forma segura
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
@@ -110,7 +167,6 @@ class _SesionActivaScreenState extends State<SesionActivaScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Tarjeta del garaje con degradado.
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
@@ -123,7 +179,7 @@ class _SesionActivaScreenState extends State<SesionActivaScreen> {
                     width: 48,
                     height: 48,
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
+                      color: Colors.white.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(14),
                     ),
                     child: const Icon(Icons.local_parking_rounded,
@@ -155,8 +211,6 @@ class _SesionActivaScreenState extends State<SesionActivaScreen> {
               ),
             ),
             const SizedBox(height: 20),
-
-            // Tarjeta destacada: estado, tiempo y costo.
             Container(
               padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
               decoration: BoxDecoration(
@@ -164,7 +218,7 @@ class _SesionActivaScreenState extends State<SesionActivaScreen> {
                 borderRadius: BorderRadius.circular(24),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.06),
+                    color: Colors.black.withValues(alpha: 0.06),
                     blurRadius: 16,
                     offset: const Offset(0, 6),
                   ),
@@ -172,20 +226,12 @@ class _SesionActivaScreenState extends State<SesionActivaScreen> {
               ),
               child: Column(
                 children: [
-                  // Indicador "En curso".
-                  Row(
+                  const Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Container(
-                        width: 10,
-                        height: 10,
-                        decoration: const BoxDecoration(
-                          color: Colors.green,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      const Text(
+                      Icon(Icons.circle, size: 10, color: Colors.green),
+                      SizedBox(width: 8),
+                      Text(
                         'EN CURSO',
                         style: TextStyle(
                           color: Colors.green,
@@ -230,44 +276,22 @@ class _SesionActivaScreenState extends State<SesionActivaScreen> {
                       color: kAccent,
                     ),
                   ),
-                  const SizedBox(height: 10),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: kAccentSoft,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.bolt, size: 14, color: kAccent),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Actualizándose en tiempo real',
-                          style: TextStyle(
-                              color: kAccent,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600),
-                        ),
-                      ],
-                    ),
-                  ),
                 ],
               ),
             ),
             const SizedBox(height: 28),
-
-            // Botón de salida.
             FilledButton.icon(
               style: FilledButton.styleFrom(
                 backgroundColor: Colors.red,
                 padding: const EdgeInsets.symmetric(vertical: 16),
               ),
-              icon: const Icon(Icons.logout),
+              icon: const Icon(Icons.download_rounded),
               onPressed: _cerrando ? null : _registrarSalida,
               label: Text(
-                  _cerrando ? 'Procesando...' : 'Registrar salida y pagar'),
+                _cerrando
+                    ? 'Descargando comprobante...'
+                    : 'Registrar salida y descargar comprobante',
+              ),
             ),
           ],
         ),

@@ -1,8 +1,14 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../models/parqueadero.dart';
+import '../services/comprobante_service.dart';
 import '../services/reserva_service.dart';
+import '../theme.dart';
+import '../widgets/app_dialog.dart';
 
 // Pago anticipado de la reserva (pago simulado).
+// Tras pagar, descarga automáticamente el comprobante digital (RF-19).
 class PagoReservaScreen extends StatefulWidget {
   final Parqueadero parqueadero;
   final String fecha;
@@ -42,26 +48,34 @@ class _PagoReservaScreenState extends State<PagoReservaScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // Resumen de la reserva
-            Card(
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Resumen de tu reserva',
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 16)),
-                    const Divider(height: 20),
-                    _fila('Parqueadero', widget.parqueadero.nombre),
-                    _fila('Fecha', widget.fecha),
-                    _fila('Hora', widget.hora),
-                    _fila('Duración', '${widget.duracionHoras} hora(s)'),
-                    _fila('Tarifa por hora',
-                        '\$${widget.parqueadero.tarifaHora.toStringAsFixed(2)}'),
-                  ],
-                ),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.grey.shade200),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.04),
+                    blurRadius: 10,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Resumen de tu reserva',
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 16)),
+                  const Divider(height: 20),
+                  _fila('Parqueadero', widget.parqueadero.nombre),
+                  _fila('Fecha', widget.fecha),
+                  _fila('Hora', widget.hora),
+                  _fila('Duración', '${widget.duracionHoras} hora(s)'),
+                  _fila('Tarifa por hora',
+                      '\$${widget.parqueadero.tarifaHora.toStringAsFixed(2)}'),
+                ],
               ),
             ),
             const SizedBox(height: 16),
@@ -70,9 +84,9 @@ class _PagoReservaScreenState extends State<PagoReservaScreen> {
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: Colors.green.shade50,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.green.shade200),
+                color: const Color(0xFFDCFCE7),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFF86EFAC)),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -81,10 +95,10 @@ class _PagoReservaScreenState extends State<PagoReservaScreen> {
                       style: TextStyle(
                           fontWeight: FontWeight.bold, fontSize: 16)),
                   Text('\$${monto.toStringAsFixed(2)}',
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 24,
-                        color: Colors.green.shade800,
+                        color: Color(0xFF15803D),
                       )),
                 ],
               ),
@@ -96,8 +110,7 @@ class _PagoReservaScreenState extends State<PagoReservaScreen> {
                 style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
-              value: _metodo,
-              decoration: const InputDecoration(border: OutlineInputBorder()),
+              initialValue: _metodo,
               items: const [
                 DropdownMenuItem(value: 'Tarjeta', child: Text('Tarjeta')),
                 DropdownMenuItem(
@@ -107,21 +120,47 @@ class _PagoReservaScreenState extends State<PagoReservaScreen> {
               ],
               onChanged: (v) => setState(() => _metodo = v!),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
+
+            // Aviso RF-19
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: kPrimarySoft,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: kPrimary.withValues(alpha: 0.25)),
+              ),
+              child: const Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.picture_as_pdf_outlined,
+                      size: 20, color: kPrimary),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Al confirmar el pago se descargará automáticamente '
+                      'tu comprobante digital en PDF.',
+                      style: TextStyle(fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
 
             // Aviso de política de cancelación
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
                 color: Colors.amber.shade50,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: Colors.amber.shade200),
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.info_outline,
-                      size: 20, color: Colors.amber),
+                  Icon(Icons.info_outline,
+                      size: 20, color: Colors.amber.shade800),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
@@ -138,8 +177,11 @@ class _PagoReservaScreenState extends State<PagoReservaScreen> {
 
             FilledButton.icon(
               style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(50),
-                backgroundColor: Colors.green,
+                minimumSize: const Size.fromHeight(52),
+                backgroundColor: const Color(0xFF16A34A),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
               ),
               onPressed: _procesando ? null : () => _pagar(monto),
               icon: _procesando
@@ -166,7 +208,7 @@ class _PagoReservaScreenState extends State<PagoReservaScreen> {
     await Future.delayed(const Duration(seconds: 2));
 
     try {
-      await _service.crearReservaPagada(
+      final reservaId = await _service.crearReservaPagada(
         parqueaderoId: widget.parqueadero.id,
         parqueaderoNombre: widget.parqueadero.nombre,
         fecha: widget.fecha,
@@ -177,21 +219,102 @@ class _PagoReservaScreenState extends State<PagoReservaScreen> {
         metodoPago: _metodo,
       );
 
+      final dataReserva = <String, dynamic>{
+        'usuarioEmail': FirebaseAuth.instance.currentUser?.email ?? '',
+        'parqueaderoNombre': widget.parqueadero.nombre,
+        'parqueaderoDireccion': widget.parqueadero.direccion,
+        'espaciosTotales': widget.parqueadero.espaciosTotales,
+        'horaApertura': widget.parqueadero.horaApertura,
+        'horaCierre': widget.parqueadero.horaCierre,
+        'minutosFraccion': widget.parqueadero.minutosFraccion,
+        'puesto': 'RESERVA',
+        'fecha': widget.fecha,
+        'hora': widget.hora,
+        'duracionHoras': widget.duracionHoras,
+        'tarifaHora': widget.parqueadero.tarifaHora,
+        'montoPagado': monto,
+        'metodoPago': _metodo,
+        'estadoPago': 'pagado',
+        'estado': 'activa',
+        'pagadoEn': Timestamp.now(),
+        'montoReembolsado': 0.0,
+      };
+
+      // RF-19: descarga automática del comprobante.
+      String? nombreArchivo;
+      String? errorDescarga;
+      try {
+        final guardado = await ComprobanteService().descargarComprobante(
+          reservaId: reservaId,
+          data: dataReserva,
+        );
+        nombreArchivo = guardado.nombreArchivo;
+      } catch (e) {
+        errorDescarga = '$e';
+        debugPrint('Error generando comprobante: $e');
+      }
+
       if (!mounted) return;
       setState(() => _procesando = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-              'Pago de \$${monto.toStringAsFixed(2)} realizado. Reserva confirmada.'),
-          backgroundColor: Colors.green,
-        ),
-      );
+
+      final codigo = reservaId.length > 8
+          ? reservaId.substring(0, 8).toUpperCase()
+          : reservaId.toUpperCase();
+
+      if (nombreArchivo == null) {
+        await AppDialog.error(
+          context: context,
+          title: 'Reserva ok, pero fallo el PDF',
+          message: errorDescarga ??
+              'La reserva se creo, pero no se pudo generar el comprobante.',
+        );
+      } else {
+        await AppDialog.success(
+          context: context,
+          title: '¡Reserva confirmada!',
+          message: 'Comprobante PDF guardado en Descargas.',
+          primaryLabel: 'Aceptar',
+          extra: AppDialog.summaryBox(
+            children: [
+              AppDialog.summaryRow('No. comprobante', codigo),
+              const SizedBox(height: 6),
+              AppDialog.summaryRow('Parqueadero', widget.parqueadero.nombre),
+              const SizedBox(height: 6),
+              AppDialog.summaryRow('Fecha', widget.fecha),
+              const SizedBox(height: 6),
+              AppDialog.summaryRow('Hora', widget.hora),
+              const SizedBox(height: 6),
+              AppDialog.summaryRow(
+                  'Duracion', '${widget.duracionHoras} hora(s)'),
+              const SizedBox(height: 6),
+              AppDialog.summaryRow('Metodo', _metodo),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 10),
+                child: Divider(height: 1),
+              ),
+              AppDialog.summaryRow(
+                'Total pagado',
+                '\$${monto.toStringAsFixed(2)}',
+                bold: true,
+                large: true,
+                valueColor: const Color(0xFF16A34A),
+              ),
+              const SizedBox(height: 8),
+              AppDialog.summaryRow('Archivo', nombreArchivo),
+            ],
+          ),
+        );
+      }
+
+      if (!mounted) return;
       Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
       setState(() => _procesando = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$e'), backgroundColor: Colors.red),
+      await AppDialog.error(
+        context: context,
+        title: 'Error en el pago',
+        message: '$e',
       );
     }
   }

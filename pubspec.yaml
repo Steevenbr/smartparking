@@ -44,6 +44,11 @@ dependencies:
   latlong2: ^0.9.1
   geolocator: ^14.0.3
   http: ^1.1.0 # ⬅️ Agrega esta si no está
+  pdf: ^3.12.0
+  printing: ^5.14.3
+  path_provider: ^2.1.6
+  file_saver: ^0.4.0
+  permission_handler: ^12.0.3
 
 dev_dependencies:
   flutter_test:

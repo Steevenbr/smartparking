@@ -64,7 +64,7 @@ class _TarifasScreenState extends State<TarifasScreen> {
                     style: TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
-                  value: _garajeId,
+                  initialValue: _garajeId,
                   isExpanded: true,
                   decoration:
                       const InputDecoration(border: OutlineInputBorder()),

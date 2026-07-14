@@ -13,18 +13,29 @@ class ParkingLogicService {
 
   CollectionReference get _col => _db.collection('registros');
 
-  // RF-05: Registrar entrada. La hora la pone el SERVIDOR. Se guarda la tarifa
-  // y la fracción del garaje para que el cobro sea siempre el de ese garaje.
+  // RF-05: Registrar entrada. Guarda snapshot del garaje + puesto asignado.
   Future<String> registrarEntrada(Parqueadero p) async {
     final user = _auth.currentUser!;
+    final ocupados = (p.espaciosTotales - p.espaciosLibres).clamp(0, p.espaciosTotales);
+    final numeroPuesto = (ocupados + 1).clamp(1, p.espaciosTotales < 1 ? 1 : p.espaciosTotales);
+    final puesto = 'P-${numeroPuesto.toString().padLeft(2, '0')}';
+
     final ref = await _col.add({
       'usuarioId': user.uid,
       'usuarioEmail': user.email ?? '',
       'parqueaderoId': p.id,
       'parqueaderoNombre': p.nombre,
+      // Snapshot del garaje para el comprobante (RF-19)
+      'parqueaderoDireccion': p.direccion,
+      'parqueaderoLatitud': p.latitud,
+      'parqueaderoLongitud': p.longitud,
+      'espaciosTotales': p.espaciosTotales,
+      'horaApertura': p.horaApertura,
+      'horaCierre': p.horaCierre,
+      'puesto': puesto,
       'tarifaHora': p.tarifaHora,
       'minutosFraccion': p.minutosFraccion,
-      'horaEntrada': FieldValue.serverTimestamp(), // hora real del servidor
+      'horaEntrada': FieldValue.serverTimestamp(),
       'horaSalida': null,
       'costo': 0,
       'estado': 'activo',
@@ -72,7 +83,7 @@ class ParkingLogicService {
         entrada = (data['horaEntrada'] as Timestamp).toDate();
       }
       if (data['horaSalida'] is Timestamp) {
-        text_salida: salida = (data['horaSalida'] as Timestamp).toDate();
+        salida = (data['horaSalida'] as Timestamp).toDate();
       }
       if (data['tarifaHora'] != null) {
         tarifaHora = (data['tarifaHora']).toDouble();

@@ -220,13 +220,15 @@ class _HomeScreenState extends State<HomeScreen> {
     final p = Parqueadero(
       id: data['parqueaderoId'] ?? '',
       nombre: data['parqueaderoNombre'] ?? 'Garaje',
-      direccion: '',
-      latitud: 0.0,
-      longitud: 0.0,
+      direccion: data['parqueaderoDireccion'] ?? '',
+      latitud: (data['parqueaderoLatitud'] ?? 0.0).toDouble(),
+      longitud: (data['parqueaderoLongitud'] ?? 0.0).toDouble(),
       tarifaHora: (data['tarifaHora'] ?? 0.0).toDouble(),
       minutosFraccion: (data['minutosFraccion'] ?? 15) as int,
       espaciosLibres: 0,
-      espaciosTotales: 0,
+      espaciosTotales: (data['espaciosTotales'] ?? 0) as int,
+      horaApertura: data['horaApertura'] ?? '08:00',
+      horaCierre: data['horaCierre'] ?? '20:00',
     );
 
     final Timestamp entradaTs = data['horaEntrada'] ?? Timestamp.now();
