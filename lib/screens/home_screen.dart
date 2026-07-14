@@ -15,6 +15,7 @@ import 'mis_garajes_screen.dart';
 import 'reportes_graficos_screen.dart';
 import 'edit_profile_screen.dart';
 import 'sesion_activa_screen.dart';
+import 'mis_reservas_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -128,6 +129,12 @@ class _HomeScreenState extends State<HomeScreen> {
         'icon': Icons.bookmark_add_rounded,
         'color': Colors.green,
         'pantalla': const ReservaScreen(),
+      },
+      {
+        'title': 'Mis Reservas',
+        'icon': Icons.event_note_rounded,
+        'color': Colors.teal,
+        'pantalla': const MisReservasScreen(),
       },
       {
         'title': 'Cálculo de Tarifas',
