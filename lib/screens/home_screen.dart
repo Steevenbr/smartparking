@@ -340,7 +340,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // (Se mantiene tu método _buildBannerSesionActiva idéntico)
+  // (Se mantiene tu metodo _buildBannerSesionActiva idéntico)
   Widget _buildBannerSesionActiva() {
     final data = _sesionActivaDoc!.data() as Map<String, dynamic>;
     final p = Parqueadero(

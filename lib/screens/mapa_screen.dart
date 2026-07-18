@@ -286,7 +286,7 @@ class _MapaScreenState extends State<MapaScreen> {
             );
             matchesDistancia = (distMetros / 1000.0) <= _maxDistanciaKm;
           } else {
-            // 💡 Si es Invitado, se desactiva el bloqueo de distancia para que pueda explorar libremente todo Latacunga
+            // 💡 Si es Invitado, se desactiva el bloqueo de distancia para que pueda explorar libremente
             matchesDistancia = true;
           }
           // 5. Filtro de Favoritos (RF-13) - SOLUCIÓN PERMANENTE PARA INVITADOS
