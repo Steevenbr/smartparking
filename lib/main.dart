@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart'; // <--- Importante
+import 'package:smart_parking/screens/home_screen.dart';
 import 'firebase_options.dart'; // <--- Importante
 import 'screens/login_screen.dart';
 import 'theme.dart';
@@ -31,7 +32,7 @@ class MyApp extends StatelessWidget {
       title: 'SmartParking',
       debugShowCheckedModeBanner: false,
       theme: appTheme,
-      home: const LoginScreen(),
+      home: const HomeScreen(),
     );
   }
 }
