@@ -17,6 +17,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   // Controladores de texto para el perfil y vehículo
   final _nombreController = TextEditingController();
+  final _emailController = TextEditingController(); // ⬅️ Controlador asignado para el Email
   final _placaController = TextEditingController();
   final _modeloController = TextEditingController();
   final _colorController = TextEditingController();
@@ -33,6 +34,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   void dispose() {
     _nombreController.dispose();
+    _emailController.dispose(); // ⬅️ Dispose correcto
     _placaController.dispose();
     _modeloController.dispose();
     _colorController.dispose();
@@ -56,10 +58,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           final data = doc.data();
           if (data != null) {
             setState(() {
-              // Muestra el nombre con el que el usuario inició sesión/se registró
               _nombreController.text = data['nombre'] ?? '';
+              // Carga el email almacenado en el documento de la base de datos
+              _emailController.text = data['email'] ?? _authService.usuarioActual?.email ?? '';
 
-              // Mapeo seguro si la estructura del coche existe
               if (data['vehiculo'] != null) {
                 final vehiculo = data['vehiculo'] as Map<String, dynamic>;
                 _placaController.text = vehiculo['placa'] ?? '';
@@ -90,6 +92,17 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       setState(() => _isSaving = true);
 
       try {
+        final emailActual = _authService.usuarioActual?.email ?? '';
+        final nuevoEmail = _emailController.text.trim();
+
+        // 1. Si el correo cambió, disparamos la lógica de verificación de Firebase Auth
+        bool correoModificado = false;
+        if (nuevoEmail != emailActual && nuevoEmail.isNotEmpty) {
+          await _authService.actualizarEmail(nuevoEmail);
+          correoModificado = true;
+        }
+
+        // 2. Guardamos el resto de la información del perfil y vehículo
         await _authService.actualizarPerfilYVehiculo(
           nombre: _nombreController.text,
           placa: _placaController.text,
@@ -98,10 +111,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         );
 
         if (mounted) {
+          String mensajeExito = 'Perfil y vehículo actualizados correctamente.';
+          if (correoModificado) {
+            mensajeExito += ' Se envió un correo de confirmación a su nueva dirección.';
+          }
+
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Perfil y vehículo actualizados correctamente.'),
+            SnackBar(
+              content: Text(mensajeExito),
               backgroundColor: Colors.green,
+              duration: const Duration(seconds: 5),
             ),
           );
           Navigator.pop(context); // Regresa al Home
@@ -146,7 +165,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
               const Divider(height: 24),
 
-              // Input de Nombre Completo (Aparece cargado automáticamente con su cuenta)
+              // Input de Nombre Completo
               TextFormField(
                 controller: _nombreController,
                 decoration: InputDecoration(
@@ -158,17 +177,26 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
               const SizedBox(height: 20),
 
-              // Input de Correo Electrónico (Informativo, bloqueado para evitar inconsistencias de Auth)
+              // Input de Correo Electrónico (Habilitado y Validado)
               TextFormField(
-                initialValue: _authService.usuarioActual?.email,
-                enabled: false,
+                controller: _emailController,
+                keyboardType: TextInputType.emailAddress,
                 decoration: InputDecoration(
-                  labelText: 'Correo Electrónico (No modificable)',
+                  labelText: 'Correo Electrónico',
                   prefixIcon: const Icon(Icons.email_outlined),
-                  fillColor: Colors.grey[200],
-                  filled: true,
+                  hintText: 'ejemplo@correo.com',
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Ingresa tu correo electrónico';
+                  }
+                  // Validación por Expresión Regular estándar para correos
+                  if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value.trim())) {
+                    return 'El formato del correo electrónico no es válido';
+                  }
+                  return null;
+                },
               ),
               const SizedBox(height: 32),
 

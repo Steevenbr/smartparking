@@ -60,7 +60,30 @@ class AuthService {
   // RF-10: Recuperación de contraseña (dentro de la clase de manera correcta)
   Future<void> recuperarContrasena(String email) async {
     try {
+      await _auth.setLanguageCode("es"); // Asegura el correo en español
       await _auth.sendPasswordResetEmail(email: email.trim());
+    } catch (e) {
+      throw _manejarErrorAuth(e);
+    }
+  }
+
+  // NUEVA FUNCIÓN: Permite cambiar el correo electrónico del usuario (Auth + Firestore)
+  Future<void> actualizarEmail(String nuevoEmail) async {
+    final user = _auth.currentUser;
+    final id = uid;
+
+    if (user == null || id.isEmpty) {
+      throw 'No hay ninguna sesión activa.';
+    }
+
+    try {
+      // 1. Envía correo de confirmación al nuevo mail y lo encola para actualización en Auth
+      await user.verifyBeforeUpdateEmail(nuevoEmail.trim());
+
+      // 2. Sincroniza el nuevo email en el documento de la base de datos de Firestore
+      await _db.collection('usuarios').doc(id).update({
+        'email': nuevoEmail.trim(),
+      });
     } catch (e) {
       throw _manejarErrorAuth(e);
     }
@@ -80,6 +103,8 @@ class AuthService {
           return 'El formato del correo electrónico no es válido.';
         case 'weak-password':
           return 'La contraseña es demasiado débil (mínimo 6 caracteres).';
+        case 'requires-recent-login':
+          return 'Por seguridad, esta acción requiere que vuelvas a iniciar sesión recientemente.';
         default:
           return e.message ?? 'Ocurrió un error en la autenticación.';
       }
