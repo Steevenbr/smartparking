@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // Control de modo invitado
 import '../models/parqueadero.dart';
 import '../services/parqueadero_service.dart';
 import '../services/ubicacion_service.dart';
@@ -36,10 +37,10 @@ class _MapaScreenState extends State<MapaScreen> {
   final _searchController = TextEditingController();
   bool _verSoloFavoritos = false;
 
-  // Estado de los filtros avanzados (RF-12)
-  double _maxDistanciaKm = 10.0; // Distancia máxima por defecto
-  double _maxPrecioHora = 5.0;   // Tarifa por hora máxima por defecto
-  bool _soloDisponibles = false; // Filtrar por espacios libres > 0
+  // Estado de los filtros avanzados (RF-12) - Rangos optimizados por defecto
+  double _maxDistanciaKm = 20.0;
+  double _maxPrecioHora = 10.0;
+  bool _soloDisponibles = false;
 
   static const LatLng _centroDefault = LatLng(-0.9333, -78.6167);
 
@@ -58,7 +59,9 @@ class _MapaScreenState extends State<MapaScreen> {
   Future<void> _ubicarme() async {
     final pos = await _ubicacion.obtenerPosicion();
     if (pos != null && mounted) {
-      setState(() => _miPosicion = pos);
+      setState(() {
+        _miPosicion = pos;
+      });
       _mapController.move(LatLng(pos.latitude, pos.longitude), 15);
     }
   }
@@ -110,7 +113,6 @@ class _MapaScreenState extends State<MapaScreen> {
     }
   }
 
-  // Muestra el modal inferior con los controles deslizantes de filtros (RF-12)
   void _mostrarPanelFiltros() {
     showModalBottomSheet(
       context: context,
@@ -140,8 +142,8 @@ class _MapaScreenState extends State<MapaScreen> {
                   Slider(
                     value: _maxDistanciaKm,
                     min: 1.0,
-                    max: 20.0,
-                    divisions: 19,
+                    max: 30.0,
+                    divisions: 29,
                     activeColor: kPrimary,
                     onChanged: (val) {
                       setModalState(() => _maxDistanciaKm = val);
@@ -157,8 +159,8 @@ class _MapaScreenState extends State<MapaScreen> {
                   Slider(
                     value: _maxPrecioHora,
                     min: 0.5,
-                    max: 5.0,
-                    divisions: 9,
+                    max: 10.0,
+                    divisions: 19,
                     activeColor: kPrimary,
                     onChanged: (val) {
                       setModalState(() => _maxPrecioHora = val);
@@ -180,7 +182,6 @@ class _MapaScreenState extends State<MapaScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Botón para resetear filtros
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton(
@@ -190,13 +191,13 @@ class _MapaScreenState extends State<MapaScreen> {
                       ),
                       onPressed: () {
                         setModalState(() {
-                          _maxDistanciaKm = 10.0;
-                          _maxPrecioHora = 5.0;
+                          _maxDistanciaKm = 20.0;
+                          _maxPrecioHora = 10.0;
                           _soloDisponibles = false;
                         });
                         setState(() {
-                          _maxDistanciaKm = 10.0;
-                          _maxPrecioHora = 5.0;
+                          _maxDistanciaKm = 20.0;
+                          _maxPrecioHora = 10.0;
                           _soloDisponibles = false;
                         });
                       },
@@ -214,6 +215,8 @@ class _MapaScreenState extends State<MapaScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bool esInvitado = FirebaseAuth.instance.currentUser == null;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Mapa del Parqueadero'),
@@ -236,7 +239,9 @@ class _MapaScreenState extends State<MapaScreen> {
           ),
         ],
       ),
-      body: StreamBuilder<DocumentSnapshot>(
+      body: esInvitado
+          ? _buildMapContent([])
+          : StreamBuilder<DocumentSnapshot>(
         stream: _parqueaderos.escucharFavoritosUsuario(),
         builder: (context, userSnapshot) {
           List<dynamic> favoritosIds = [];
@@ -244,211 +249,230 @@ class _MapaScreenState extends State<MapaScreen> {
             final userData = userSnapshot.data!.data() as Map<String, dynamic>?;
             favoritosIds = userData?['favoritos'] ?? [];
           }
-
-          return StreamBuilder<List<Parqueadero>>(
-            stream: _parqueaderos.escucharParqueaderos(),
-            builder: (context, snapshot) {
-              final todosLosGarajes = snapshot.data ?? [];
-
-              // Lógica combinada de búsqueda y filtrado avanzado (RF-12)
-              final garajesFiltrados = todosLosGarajes.where((p) {
-                final query = _filtroBusqueda.toLowerCase();
-
-                // 1. Filtrado por Nombre o Dirección
-                final matchesNombre = p.nombre.toLowerCase().contains(query);
-                final matchesDireccion = p.direccion.toLowerCase().contains(query);
-                final matchesBusqueda = matchesNombre || matchesDireccion;
-
-                // 2. Filtrado por Precio máximo por hora
-                final matchesPrecio = p.tarifaHora <= _maxPrecioHora;
-
-                // 3. Filtrado por Disponibilidad (Espacios libres)
-                final matchesDisponibilidad = !_soloDisponibles || (p.espaciosLibres > 0);
-
-                // 4. Filtrado por Distancia GPS
-                bool matchesDistancia = true;
-                if (_miPosicion != null) {
-                  final distMetros = _ubicacion.distanciaMetros(
-                    _miPosicion!.latitude, _miPosicion!.longitude, p.latitud, p.longitud,
-                  );
-                  matchesDistancia = (distMetros / 1000.0) <= _maxDistanciaKm;
-                }
-
-                // 5. Filtro de Favoritos (RF-13)
-                if (_verSoloFavoritos) {
-                  return matchesBusqueda && matchesPrecio && matchesDisponibilidad && matchesDistancia && favoritosIds.contains(p.id);
-                }
-
-                return matchesBusqueda && matchesPrecio && matchesDisponibilidad && matchesDistancia;
-              }).toList();
-
-              final marcadores = garajesFiltrados
-                  .map((p) => Marker(
-                point: LatLng(p.latitud, p.longitud),
-                width: 44,
-                height: 44,
-                child: GestureDetector(
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => DetalleParqueaderoScreen(parqueadero: p),
-                    ),
-                  ),
-                  child: Icon(
-                    Icons.location_on,
-                    size: 44,
-                    color: p.espaciosLibres > 0 ? Colors.green : Colors.red,
-                  ),
-                ),
-              ))
-                  .toList();
-
-              if (_miPosicion != null) {
-                marcadores.add(
-                  Marker(
-                    point: LatLng(_miPosicion!.latitude, _miPosicion!.longitude),
-                    width: 30,
-                    height: 30,
-                    child: const Icon(Icons.my_location, color: kPrimary, size: 28),
-                  ),
-                );
-              }
-
-              return Stack(
-                children: [
-                  Column(
-                    children: [
-                      Expanded(
-                        child: FlutterMap(
-                          mapController: _mapController,
-                          options: MapOptions(
-                            initialCenter: _miPosicion != null
-                                ? LatLng(_miPosicion!.latitude, _miPosicion!.longitude)
-                                : _centroDefault,
-                            initialZoom: 14,
-                          ),
-                          children: [
-                            TileLayer(
-                              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                              userAgentPackageName: 'com.example.smart_parking',
-                            ),
-                            if (_puntosRuta.isNotEmpty)
-                              PolylineLayer(
-                                polylines: [
-                                  Polyline(
-                                    points: _puntosRuta,
-                                    color: Colors.blueAccent,
-                                    strokeWidth: 5.0,
-                                  ),
-                                ],
-                              ),
-                            MarkerLayer(markers: marcadores),
-                          ],
-                        ),
-                      ),
-                      _panelCercanos(garajesFiltrados, favoritosIds),
-                    ],
-                  ),
-
-                  // Barra superior flotante con Buscador, Filtros Avanzados (RF-12) y Favoritos (RF-13)
-                  Positioned(
-                    top: 16,
-                    left: 16,
-                    right: 16,
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              boxShadow: const [
-                                BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 2))
-                              ],
-                            ),
-                            child: TextField(
-                              controller: _searchController,
-                              decoration: InputDecoration(
-                                hintText: 'Buscar por nombre o dirección...',
-                                border: InputBorder.none,
-                                icon: const Icon(Icons.search, color: Colors.grey),
-                                suffixIcon: _filtroBusqueda.isNotEmpty
-                                    ? IconButton(
-                                  icon: const Icon(Icons.clear, color: Colors.grey),
-                                  onPressed: () {
-                                    setState(() {
-                                      _searchController.clear();
-                                      _filtroBusqueda = '';
-                                    });
-                                  },
-                                )
-                                    : null,
-                              ),
-                              onChanged: (value) {
-                                setState(() {
-                                  _filtroBusqueda = value;
-                                });
-                              },
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-
-                        // BOTÓN DE FILTROS AVANZADOS (RF-12)
-                        GestureDetector(
-                          onTap: _mostrarPanelFiltros,
-                          child: Container(
-                            height: 48,
-                            width: 48,
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              boxShadow: const [
-                                BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 2))
-                              ],
-                            ),
-                            child: const Icon(Icons.filter_list_rounded, color: kPrimary),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-
-                        // BOTÓN DE FAVORITOS (RF-13)
-                        GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              _verSoloFavoritos = !_verSoloFavoritos;
-                            });
-                          },
-                          child: Container(
-                            height: 48,
-                            width: 48,
-                            decoration: BoxDecoration(
-                              color: _verSoloFavoritos ? Colors.red : Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              boxShadow: const [
-                                BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 2))
-                              ],
-                            ),
-                            child: Icon(
-                              _verSoloFavoritos ? Icons.favorite : Icons.favorite_border,
-                              color: _verSoloFavoritos ? Colors.white : Colors.red,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              );
-            },
-          );
+          return _buildMapContent(favoritosIds);
         },
       ),
     );
   }
 
+  Widget _buildMapContent(List<dynamic> favoritosIds) {
+    final bool esInvitado = FirebaseAuth.instance.currentUser == null;
+
+    return StreamBuilder<List<Parqueadero>>(
+      stream: _parqueaderos.escucharParqueaderos(),
+      builder: (context, snapshot) {
+        final todosLosGarajes = snapshot.data ?? [];
+
+        // Lógica combinada de búsqueda y filtrado avanzado (RF-12)
+        final garajesFiltrados = todosLosGarajes.where((p) {
+          final query = _filtroBusqueda.toLowerCase();
+
+          // 1. Filtrado por Nombre o Dirección
+          final matchesNombre = p.nombre.toLowerCase().contains(query);
+          final matchesDireccion = p.direccion.toLowerCase().contains(query);
+          final matchesBusqueda = matchesNombre || matchesDireccion;
+
+          // 2. Filtrado por Precio máximo por hora
+          final matchesPrecio = p.tarifaHora <= _maxPrecioHora;
+
+          // 3. Filtrado por Disponibilidad (Espacios libres)
+          final matchesDisponibilidad = !_soloDisponibles || (p.espaciosLibres > 0);
+
+          // 4. Filtrado por Distancia GPS - CORREGIDO PARA EVITAR EXCLUSIÓN EN INVITADOS
+          bool matchesDistancia = true;
+          if (!esInvitado && _miPosicion != null) {
+            final distMetros = _ubicacion.distanciaMetros(
+              _miPosicion!.latitude, _miPosicion!.longitude, p.latitud, p.longitud,
+            );
+            matchesDistancia = (distMetros / 1000.0) <= _maxDistanciaKm;
+          } else {
+            // 💡 Si es Invitado, se desactiva el bloqueo de distancia para que pueda explorar libremente
+            matchesDistancia = true;
+          }
+          // 5. Filtro de Favoritos (RF-13) - SOLUCIÓN PERMANENTE PARA INVITADOS
+          bool matchesFavoritos = true;
+          if (!esInvitado && _verSoloFavoritos) {
+            matchesFavoritos = favoritosIds.contains(p.id);
+          } else if (esInvitado) {
+            matchesFavoritos = true;
+          }
+
+          return matchesBusqueda && matchesPrecio && matchesDisponibilidad && matchesDistancia && matchesFavoritos;
+        }).toList();
+
+        final marcadores = garajesFiltrados
+            .map((p) => Marker(
+          point: LatLng(p.latitud, p.longitud),
+          width: 44,
+          height: 44,
+          child: GestureDetector(
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => DetalleParqueaderoScreen(parqueadero: p),
+              ),
+            ),
+            child: Icon(
+              Icons.location_on,
+              size: 44,
+              color: p.espaciosLibres > 0 ? Colors.green : Colors.red,
+            ),
+          ),
+        ))
+            .toList();
+
+        if (_miPosicion != null) {
+          marcadores.add(
+            Marker(
+              point: LatLng(_miPosicion!.latitude, _miPosicion!.longitude),
+              width: 30,
+              height: 30,
+              child: const Icon(Icons.my_location, color: kPrimary, size: 28),
+            ),
+          );
+        }
+
+        return Stack(
+          children: [
+            Column(
+              children: [
+                Expanded(
+                  child: FlutterMap(
+                    mapController: _mapController,
+                    options: MapOptions(
+                      initialCenter: _miPosicion != null
+                          ? LatLng(_miPosicion!.latitude, _miPosicion!.longitude)
+                          : _centroDefault,
+                      initialZoom: 14,
+                    ),
+                    children: [
+                      TileLayer(
+                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        userAgentPackageName: 'com.example.smart_parking',
+                      ),
+                      if (_puntosRuta.isNotEmpty)
+                        PolylineLayer(
+                          polylines: [
+                            Polyline(
+                              points: _puntosRuta,
+                              color: Colors.blueAccent,
+                              strokeWidth: 5.0,
+                            ),
+                          ],
+                        ),
+                      MarkerLayer(markers: marcadores),
+                    ],
+                  ),
+                ),
+                _panelCercanos(garajesFiltrados, favoritosIds),
+              ],
+            ),
+
+            // Barra flotante con Buscador, Filtros y Favoritos
+            Positioned(
+              top: 16,
+              left: 16,
+              right: 16,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: const [
+                          BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 2))
+                        ],
+                      ),
+                      child: TextField(
+                        controller: _searchController,
+                        decoration: InputDecoration(
+                          hintText: 'Buscar por nombre o dirección...',
+                          border: InputBorder.none,
+                          icon: const Icon(Icons.search, color: Colors.grey),
+                          suffixIcon: _filtroBusqueda.isNotEmpty
+                              ? IconButton(
+                            icon: const Icon(Icons.clear, color: Colors.grey),
+                            onPressed: () {
+                              setState(() {
+                                _searchController.clear();
+                                _filtroBusqueda = '';
+                              });
+                            },
+                          )
+                              : null,
+                        ),
+                        onChanged: (value) {
+                          setState(() {
+                            _filtroBusqueda = value;
+                          });
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+
+                  GestureDetector(
+                    onTap: _mostrarPanelFiltros,
+                    child: Container(
+                      height: 48,
+                      width: 48,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: const [
+                          BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 2))
+                        ],
+                      ),
+                      child: const Icon(Icons.filter_list_rounded, color: kPrimary),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+
+                  GestureDetector(
+                    onTap: () {
+                      if (esInvitado) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Función exclusiva. Inicia sesión para guardar parqueaderos favoritos.'),
+                            backgroundColor: Colors.orange,
+                          ),
+                        );
+                        return;
+                      }
+                      setState(() {
+                        _verSoloFavoritos = !_verSoloFavoritos;
+                      });
+                    },
+                    child: Container(
+                      height: 48,
+                      width: 48,
+                      decoration: BoxDecoration(
+                        color: _verSoloFavoritos ? Colors.red : Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: const [
+                          BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 2))
+                        ],
+                      ),
+                      child: Icon(
+                        _verSoloFavoritos ? Icons.favorite : Icons.favorite_border,
+                        color: _verSoloFavoritos ? Colors.white : Colors.red,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Widget _panelCercanos(List<Parqueadero> garajes, List<dynamic> favoritosIds) {
+    final bool esInvitado = FirebaseAuth.instance.currentUser == null;
+
     if (garajes.isEmpty) {
       return Padding(
         padding: const EdgeInsets.all(16),
@@ -513,6 +537,15 @@ class _MapaScreenState extends State<MapaScreen> {
                     ),
                     tooltip: esFav ? 'Quitar de favoritos' : 'Guardar en favoritos',
                     onPressed: () async {
+                      if (esInvitado) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Inicia sesión para gestionar favoritos.'),
+                            backgroundColor: Colors.orange,
+                          ),
+                        );
+                        return;
+                      }
                       try {
                         await _parqueaderos.alternarFavorito(p.id, esFav);
                       } catch (e) {

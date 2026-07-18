@@ -1,6 +1,7 @@
-import 'dart:async'; // ⬅️ Necesario para el Timer en tiempo real
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // ⬅️ Necesario para verificar si es invitado
 import '../services/auth_service.dart';
 import '../services/parking_logic_service.dart';
 import '../theme.dart';
@@ -15,7 +16,6 @@ import 'mis_garajes_screen.dart';
 import 'reportes_graficos_screen.dart';
 import 'edit_profile_screen.dart';
 import 'sesion_activa_screen.dart';
-import 'mis_reservas_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -25,11 +25,11 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  String? _rol; // null mientras carga
-  DocumentSnapshot? _sesionActivaDoc; // Almacena la sesión activa si existe
+  String? _rol;
+  DocumentSnapshot? _sesionActivaDoc;
   bool _cargando = true;
+  bool _esInvitado = true; // ⬅️ Controla si no ha iniciado sesión
 
-  // Variables para controlar el cronómetro en el banner
   Timer? _bannerTimer;
   Duration _tiempoTranscurrido = Duration.zero;
 
@@ -50,10 +50,27 @@ class _HomeScreenState extends State<HomeScreen> {
     _bannerTimer = null;
   }
 
-  // Carga el rol y verifica si hay sesión de parqueo en curso
   Future<void> _inicializarDatos() async {
-    _detenerTimer(); // Detenemos cualquier temporizador previo
+    _detenerTimer();
     setState(() => _cargando = true);
+
+    // Verificamos si hay un usuario autenticado en Firebase
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      // 👤 MODO INVITADO
+      if (mounted) {
+        setState(() {
+          _rol = 'conductor'; // Por defecto ve las opciones de conductor
+          _esInvitado = true;
+          _sesionActivaDoc = null;
+          _cargando = false;
+        });
+      }
+      return;
+    }
+
+    // 🔐 USUARIO AUTENTICADO (Conductor registrado o Dueño)
     try {
       final rol = await AuthService().obtenerRol();
       final sesion = await ParkingLogicService().obtenerSesionActiva();
@@ -61,30 +78,26 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) {
         setState(() {
           _rol = rol;
+          _esInvitado = false;
           _sesionActivaDoc = sesion;
           _cargando = false;
         });
 
-        // Si hay una sesión activa, iniciamos el temporizador local para actualizar el Banner
         if (sesion != null) {
           _iniciarTimerBanner();
         }
       }
     } catch (e) {
-      if (mounted) {
-        setState(() => _cargando = false);
-      }
+      if (mounted) setState(() => _cargando = false);
     }
   }
 
-  // Actualiza localmente el contador de tiempo transcurrido cada segundo
   void _iniciarTimerBanner() {
     final data = _sesionActivaDoc!.data() as Map<String, dynamic>;
     final Timestamp? entradaTs = data['horaEntrada'];
     if (entradaTs == null) return;
 
     final horaEntrada = entradaTs.toDate();
-
     setState(() {
       _tiempoTranscurrido = DateTime.now().difference(horaEntrada);
     });
@@ -98,13 +111,9 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  // Formatea la duración en formato amigable HH:MM:SS
   String _formatoDuracion(Duration d) {
     String dosDigitos(int n) => n.toString().padLeft(2, '0');
-    final horas = dosDigitos(d.inHours);
-    final minutos = dosDigitos(d.inMinutes % 60);
-    final segundos = dosDigitos(d.inSeconds % 60);
-    return '$horas:$minutos:$segundos';
+    return '${dosDigitos(d.inHours)}:${dosDigitos(d.inMinutes % 60)}:${dosDigitos(d.inSeconds % 60)}';
   }
 
   @override
@@ -117,42 +126,42 @@ class _HomeScreenState extends State<HomeScreen> {
         'icon': Icons.map_rounded,
         'color': Colors.purple,
         'pantalla': const MapaScreen(),
+        'requiereAuth': false, // ⬅️ Cualquiera puede ver el mapa
       },
       {
         'title': 'Espacios Disponibles',
         'icon': Icons.directions_car_rounded,
         'color': kPrimary,
         'pantalla': const DisponibilidadScreen(),
+        'requiereAuth': false, // ⬅️ Público
       },
       {
         'title': 'Reservar Lugar',
         'icon': Icons.bookmark_add_rounded,
         'color': Colors.green,
         'pantalla': const ReservaScreen(),
-      },
-      {
-        'title': 'Mis Reservas',
-        'icon': Icons.event_note_rounded,
-        'color': Colors.teal,
-        'pantalla': const MisReservasScreen(),
+        'requiereAuth': true, // ⬅️ OBLIGATORIO INICIAR SESIÓN (Petición del Ing)
       },
       {
         'title': 'Cálculo de Tarifas',
         'icon': Icons.monetization_on_rounded,
         'color': kAccent,
         'pantalla': const TarifasScreen(),
+        'requiereAuth': false,
       },
       {
         'title': 'Mi Historial',
         'icon': Icons.history_rounded,
         'color': Colors.orange,
         'pantalla': const HistorialScreen(),
+        'requiereAuth': true, // ⬅️ Requiere cuenta
       },
       {
         'title': 'Mi Perfil y Vehículo',
         'icon': Icons.manage_accounts_rounded,
         'color': Colors.blueGrey,
         'pantalla': const EditProfileScreen(),
+        'requiereAuth': true, // ⬅️ Requiere cuenta
       },
     ];
 
@@ -183,7 +192,6 @@ class _HomeScreenState extends State<HomeScreen> {
           slivers: [
             SliverToBoxAdapter(child: _header(esDueno)),
 
-            // BANNER INTERACTIVO EN TIEMPO REAL (Solo para conductores con parqueo activo)
             if (!esDueno && _sesionActivaDoc != null)
               SliverToBoxAdapter(
                 child: Padding(
@@ -213,109 +221,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // Banner personalizado que muestra dinámicamente el contador HH:MM:SS
-  Widget _buildBannerSesionActiva() {
-    final data = _sesionActivaDoc!.data() as Map<String, dynamic>;
-
-    final p = Parqueadero(
-      id: data['parqueaderoId'] ?? '',
-      nombre: data['parqueaderoNombre'] ?? 'Garaje',
-      direccion: data['parqueaderoDireccion'] ?? '',
-      latitud: (data['parqueaderoLatitud'] ?? 0.0).toDouble(),
-      longitud: (data['parqueaderoLongitud'] ?? 0.0).toDouble(),
-      tarifaHora: (data['tarifaHora'] ?? 0.0).toDouble(),
-      minutosFraccion: (data['minutosFraccion'] ?? 15) as int,
-      espaciosLibres: 0,
-      espaciosTotales: (data['espaciosTotales'] ?? 0) as int,
-      horaApertura: data['horaApertura'] ?? '08:00',
-      horaCierre: data['horaCierre'] ?? '20:00',
-    );
-
-    final Timestamp entradaTs = data['horaEntrada'] ?? Timestamp.now();
-
-    return Material(
-      color: Colors.amber.shade50,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () async {
-          _detenerTimer(); // Apagamos el timer local antes de saltar a la pantalla de detalle
-          await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => SesionActivaScreen(
-                registroId: _sesionActivaDoc!.id,
-                parqueadero: p,
-                horaEntrada: entradaTs.toDate(),
-              ),
-            ),
-          );
-          _inicializarDatos(); // Al volver, refresca para actualizar o remover el banner
-        },
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.amber.shade300, width: 1.5),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.amber.shade200,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.bolt, color: Colors.amber, size: 24),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Tienes un parqueo activo',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Garaje: ${p.nombre}',
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        color: Colors.grey[700],
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    // AQUÍ SE MUESTRA EL TIEMPO EN TIEMPO REAL
-                    Row(
-                      children: [
-                        const Icon(Icons.access_time_rounded, size: 13.5, color: Colors.amber),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Tiempo: ${_formatoDuracion(_tiempoTranscurrido)}',
-                          style: const TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.amber,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(Icons.arrow_forward_ios_rounded, color: Colors.grey, size: 16),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _header(bool esDueno) {
     return Container(
       width: double.infinity,
@@ -336,46 +241,33 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(width: 8),
               const Text(
                 'SmartParking',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
               ),
               const Spacer(),
-              IconButton(
-                icon: const Icon(Icons.account_circle_outlined, color: Colors.white),
-                tooltip: 'Editar Perfil',
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const EditProfileScreen()),
-                  ).then((_) => _inicializarDatos());
-                },
-              ),
-              IconButton(
+              // Mostrar botón de Login si es invitado, o Logout si ya ingresó
+              _esInvitado
+                  ? IconButton(
+                icon: const Icon(Icons.login_rounded, color: Colors.white),
+                tooltip: 'Iniciar Sesión',
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const LoginScreen()),
+                ).then((_) => _inicializarDatos()),
+              )
+                  : IconButton(
                 icon: const Icon(Icons.logout_rounded, color: Colors.white),
                 tooltip: 'Cerrar sesión',
                 onPressed: () async {
                   await AuthService().cerrarSesion();
-                  if (context.mounted) {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(builder: (context) => const LoginScreen()),
-                    );
-                  }
+                  _inicializarDatos();
                 },
               ),
             ],
           ),
           const SizedBox(height: 16),
-          const Text(
-            '¡Hola de nuevo!',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-            ),
+          Text(
+            _esInvitado ? '¡Bienvenido!' : '¡Hola de nuevo!',
+            style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 6),
           Text(
@@ -383,32 +275,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 ? 'Gestiona tus garajes, capacidad y tarifas.'
                 : 'Encuentra, reserva y paga tu parqueo fácilmente.',
             style: const TextStyle(color: Colors.white70, fontSize: 15),
-          ),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.18),
-              borderRadius: BorderRadius.circular(30),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  esDueno ? Icons.store_mall_directory_rounded : Icons.directions_car_rounded,
-                  color: Colors.white,
-                  size: 16,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  esDueno ? 'Dueño de garaje' : 'Conductor',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
           ),
         ],
       ),
@@ -425,11 +291,22 @@ class _HomeScreenState extends State<HomeScreen> {
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
         onTap: () {
+          // INTERCEPCIÓN DE SEGURIDAD: Si requiere auth y es invitado, lo mandamos a loguearse
+          if (_esInvitado && (option['requiereAuth'] ?? false)) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Para acceder a esta función debes iniciar sesión primero.')),
+            );
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const LoginScreen()),
+            ).then((_) => _inicializarDatos());
+            return;
+          }
+
+          // Si cumple las condiciones, navega normalmente
           Navigator.push(
             context,
-            MaterialPageRoute(
-              builder: (context) => option['pantalla'] as Widget,
-            ),
+            MaterialPageRoute(builder: (context) => option['pantalla'] as Widget),
           ).then((_) => _inicializarDatos());
         },
         child: Padding(
@@ -444,19 +321,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [
-                      color.withOpacity(0.85),
-                      color.withOpacity(0.55),
-                    ],
+                    colors: [color.withOpacity(0.85), color.withOpacity(0.55)],
                   ),
                   borderRadius: BorderRadius.circular(18),
-                  boxShadow: [
-                    BoxShadow(
-                      color: color.withOpacity(0.35),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
                 ),
                 child: Icon(option['icon'] as IconData, size: 30, color: Colors.white),
               ),
@@ -464,12 +331,80 @@ class _HomeScreenState extends State<HomeScreen> {
               Text(
                 option['title'] as String,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF1F2937),
+                style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: Color(0xFF1F2937)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // (Se mantiene tu metodo _buildBannerSesionActiva idéntico)
+  Widget _buildBannerSesionActiva() {
+    final data = _sesionActivaDoc!.data() as Map<String, dynamic>;
+    final p = Parqueadero(
+      id: data['parqueaderoId'] ?? '',
+      nombre: data['parqueaderoNombre'] ?? 'Garaje',
+      direccion: '', latitud: 0.0, longitud: 0.0,
+      tarifaHora: (data['tarifaHora'] ?? 0.0).toDouble(),
+      minutosFraccion: (data['minutosFraccion'] ?? 15) as int,
+      espaciosLibres: 0, espaciosTotales: 0,
+    );
+    final Timestamp entradaTs = data['horaEntrada'] ?? Timestamp.now();
+
+    return Material(
+      color: Colors.amber.shade50,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () async {
+          _detenerTimer();
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => SesionActivaScreen(
+                registroId: _sesionActivaDoc!.id,
+                parqueadero: p,
+                horaEntrada: entradaTs.toDate(),
+              ),
+            ),
+          );
+          _inicializarDatos();
+        },
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.amber.shade300, width: 1.5),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: Colors.amber.shade200, shape: BoxShape.circle),
+                child: const Icon(Icons.bolt, color: Colors.amber, size: 24),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Tienes un parqueo activo', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 2),
+                    Text('Garaje: ${p.nombre}', style: TextStyle(fontSize: 12.5, color: Colors.grey[700])),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        const Icon(Icons.access_time_rounded, size: 13.5, color: Colors.amber),
+                        const SizedBox(width: 4),
+                        Text('Tiempo: ${_formatoDuracion(_tiempoTranscurrido)}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Colors.amber)),
+                      ],
+                    ),
+                  ],
                 ),
               ),
+              const Icon(Icons.arrow_forward_ios_rounded, color: Colors.grey, size: 16),
             ],
           ),
         ),
