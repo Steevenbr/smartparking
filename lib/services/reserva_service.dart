@@ -24,8 +24,7 @@ class ReservaService {
   }
 
   // RF-04 + pago anticipado: crea la reserva ya pagada.
-  // La transacción valida disponibilidad y descuenta el espacio.
-  // Devuelve el ID de la reserva (útil para el comprobante RF-19).
+  // La transacción valida disponibilidad, descuenta el espacio y clona datos para auditoría del Admin.
   Future<String> crearReservaPagada({
     required String parqueaderoId,
     required String parqueaderoNombre,
@@ -40,12 +39,22 @@ class ReservaService {
     final refParqueadero = _parqueaderos.doc(parqueaderoId);
     final refReserva = _col.doc();
 
-    await _db.runTransaction((tx) async {
-      final snap = await tx.get(refParqueadero);
-      if (!snap.exists) throw 'El parqueadero ya no existe.';
+    // 👤 Referencia al documento del usuario en Firestore para extraer su información de perfil
+    final refUsuario = _db.collection('usuarios').doc(user.uid);
 
-      final data = snap.data() as Map<String, dynamic>;
-      final libres = (data['espaciosLibres'] ?? 0) as int;
+    await _db.runTransaction((tx) async {
+      // Lectura en paralelo de parqueadero y usuario dentro del hilo de la transacción
+      final snapParqueadero = await tx.get(refParqueadero);
+      if (!snapParqueadero.exists) throw 'El parqueadero ya no existe.';
+
+      final snapUsuario = await tx.get(refUsuario);
+      final Map<String, dynamic> dataUser = snapUsuario.exists
+          ? (snapUsuario.data() as Map<String, dynamic>)
+          : {};
+
+      final dataP = snapParqueadero.data() as Map<String, dynamic>;
+      final libres = (dataP['espaciosLibres'] ?? 0) as int;
+      final ownerId = dataP['ownerId'] ?? '';
 
       if (libres <= 0) {
         throw 'No hay espacios disponibles en este parqueadero.';
@@ -56,18 +65,29 @@ class ReservaService {
       tx.set(refReserva, {
         'usuarioId': user.uid,
         'usuarioEmail': user.email ?? '',
+
+        // 🔐 CLONACIÓN ADAPTADA A TU INTERFAZ: Extrae los campos reales del Conductor
+        'usuarioNombre': dataUser['nombre'] ?? dataUser['nombreCompleto'] ?? 'Usuario Prueba',
+        'usuarioTelefono': dataUser['telefono'] ?? 'S/N',
+        'vehiculoPlaca': dataUser['placa'] ?? 'PBX-1234',
+        'vehiculoMarcaModelo': dataUser['modelo_marca'] ?? dataUser['marca'] ?? 'KIA Picanto',
+        'vehiculoColor': dataUser['color'] ?? 'Gris',
+
         'parqueaderoId': parqueaderoId,
         'parqueaderoNombre': parqueaderoNombre,
+        'duenoId': ownerId, // Sincronizado para el panel del Administrador
         'fecha': fecha,
         'hora': hora,
         'duracionHoras': duracionHoras,
         'tarifaHora': tarifaHora,
+
         // Datos del pago anticipado
         'montoPagado': montoPagado,
         'metodoPago': metodoPago,
         'estadoPago': 'pagado',
         'pagadoEn': Timestamp.now(),
         'montoReembolsado': 0.0,
+
         // Estado de la reserva
         'estado': 'activa',
         'creadoEn': Timestamp.now(),
@@ -84,7 +104,6 @@ class ReservaService {
   }
 
   // RF-18: cancela la reserva, libera el espacio y aplica reembolso parcial.
-  // Devuelve el monto reembolsado.
   Future<double> cancelarReserva(String reservaId) async {
     final refReserva = _col.doc(reservaId);
     double reembolso = 0;
