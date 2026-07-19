@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // ⬅️ Necesario para verificar si es invitado
+import 'package:firebase_auth/firebase_auth.dart';
 import '../services/auth_service.dart';
 import '../services/parking_logic_service.dart';
 import '../theme.dart';
@@ -9,7 +9,8 @@ import '../models/parqueadero.dart';
 import 'login_screen.dart';
 import 'disponibilidad_screen.dart';
 import 'reserva_screen.dart';
-import 'historial_screen.dart';
+import 'mis_reservas_screen.dart'; // Pantalla para comprobantes y cancelaciones
+import 'historial_screen.dart';     // Tu pantalla original de historial
 import 'mapa_screen.dart';
 import 'tarifas_screen.dart';
 import 'mis_garajes_screen.dart';
@@ -28,7 +29,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _rol;
   DocumentSnapshot? _sesionActivaDoc;
   bool _cargando = true;
-  bool _esInvitado = true; // ⬅️ Controla si no ha iniciado sesión
+  bool _esInvitado = true;
 
   Timer? _bannerTimer;
   Duration _tiempoTranscurrido = Duration.zero;
@@ -54,14 +55,12 @@ class _HomeScreenState extends State<HomeScreen> {
     _detenerTimer();
     setState(() => _cargando = true);
 
-    // Verificamos si hay un usuario autenticado en Firebase
     final user = FirebaseAuth.instance.currentUser;
 
     if (user == null) {
-      // 👤 MODO INVITADO
       if (mounted) {
         setState(() {
-          _rol = 'conductor'; // Por defecto ve las opciones de conductor
+          _rol = 'conductor';
           _esInvitado = true;
           _sesionActivaDoc = null;
           _cargando = false;
@@ -70,7 +69,6 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    // 🔐 USUARIO AUTENTICADO (Conductor registrado o Dueño)
     try {
       final rol = await AuthService().obtenerRol();
       final sesion = await ParkingLogicService().obtenerSesionActiva();
@@ -126,21 +124,21 @@ class _HomeScreenState extends State<HomeScreen> {
         'icon': Icons.map_rounded,
         'color': Colors.purple,
         'pantalla': const MapaScreen(),
-        'requiereAuth': false, // ⬅️ Cualquiera puede ver el mapa
+        'requiereAuth': false,
       },
       {
         'title': 'Espacios Disponibles',
         'icon': Icons.directions_car_rounded,
         'color': kPrimary,
         'pantalla': const DisponibilidadScreen(),
-        'requiereAuth': false, // ⬅️ Público
+        'requiereAuth': false,
       },
       {
         'title': 'Reservar Lugar',
         'icon': Icons.bookmark_add_rounded,
         'color': Colors.green,
         'pantalla': const ReservaScreen(),
-        'requiereAuth': true, // ⬅️ OBLIGATORIO INICIAR SESIÓN (Petición del Ing)
+        'requiereAuth': true,
       },
       {
         'title': 'Cálculo de Tarifas',
@@ -150,18 +148,25 @@ class _HomeScreenState extends State<HomeScreen> {
         'requiereAuth': false,
       },
       {
-        'title': 'Mi Historial',
+        'title': 'Mis Reservas', // ⬅️ Opción para Comprobantes y Cancelaciones parciales
+        'icon': Icons.event_note_rounded,
+        'color': Colors.indigo,
+        'pantalla': const MisReservasScreen(),
+        'requiereAuth': true,
+      },
+      {
+        'title': 'Mi Historial', // ⬅️ Tu opción original restaurada junto a la otra
         'icon': Icons.history_rounded,
         'color': Colors.orange,
         'pantalla': const HistorialScreen(),
-        'requiereAuth': true, // ⬅️ Requiere cuenta
+        'requiereAuth': true,
       },
       {
         'title': 'Mi Perfil y Vehículo',
         'icon': Icons.manage_accounts_rounded,
         'color': Colors.blueGrey,
         'pantalla': const EditProfileScreen(),
-        'requiereAuth': true, // ⬅️ Requiere cuenta
+        'requiereAuth': true,
       },
     ];
 
@@ -244,7 +249,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
               ),
               const Spacer(),
-              // Mostrar botón de Login si es invitado, o Logout si ya ingresó
               _esInvitado
                   ? IconButton(
                 icon: const Icon(Icons.login_rounded, color: Colors.white),
@@ -291,7 +295,6 @@ class _HomeScreenState extends State<HomeScreen> {
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
         onTap: () {
-          // INTERCEPCIÓN DE SEGURIDAD: Si requiere auth y es invitado, lo mandamos a loguearse
           if (_esInvitado && (option['requiereAuth'] ?? false)) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Para acceder a esta función debes iniciar sesión primero.')),
@@ -303,7 +306,6 @@ class _HomeScreenState extends State<HomeScreen> {
             return;
           }
 
-          // Si cumple las condiciones, navega normalmente
           Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => option['pantalla'] as Widget),
@@ -340,7 +342,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // (Se mantiene tu metodo _buildBannerSesionActiva idéntico)
   Widget _buildBannerSesionActiva() {
     final data = _sesionActivaDoc!.data() as Map<String, dynamic>;
     final p = Parqueadero(

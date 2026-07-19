@@ -17,7 +17,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   // Controladores de texto para el perfil y vehículo
   final _nombreController = TextEditingController();
-  final _emailController = TextEditingController(); // ⬅️ Controlador asignado para el Email
+  final _emailController = TextEditingController();
   final _placaController = TextEditingController();
   final _modeloController = TextEditingController();
   final _colorController = TextEditingController();
@@ -34,7 +34,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   void dispose() {
     _nombreController.dispose();
-    _emailController.dispose(); // ⬅️ Dispose correcto
+    _emailController.dispose();
     _placaController.dispose();
     _modeloController.dispose();
     _colorController.dispose();
@@ -59,15 +59,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           if (data != null) {
             setState(() {
               _nombreController.text = data['nombre'] ?? '';
-              // Carga el email almacenado en el documento de la base de datos
               _emailController.text = data['email'] ?? _authService.usuarioActual?.email ?? '';
 
-              if (data['vehiculo'] != null) {
-                final vehiculo = data['vehiculo'] as Map<String, dynamic>;
-                _placaController.text = vehiculo['placa'] ?? '';
-                _modeloController.text = vehiculo['modelo'] ?? '';
-                _colorController.text = vehiculo['color'] ?? '';
-              }
+              // 🔀 UNIFICACIÓN DE LECTURA: Lee la estructura directa requerida por el Admin
+              _placaController.text = data['placa'] ?? '';
+              _modeloController.text = data['modelo_marca'] ?? data['modelo'] ?? '';
+              _colorController.text = data['color'] ?? '';
             });
           }
         }
@@ -86,14 +83,17 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
-  // Envía las modificaciones validadas a Firestore mediante el AuthService
+  // Envía las modificaciones validadas a Firestore solucionando el error not-found
   Future<void> _guardarCambios() async {
     if (_formKey.currentState!.validate()) {
       setState(() => _isSaving = true);
 
       try {
+        final uid = _authService.uid;
         final emailActual = _authService.usuarioActual?.email ?? '';
         final nuevoEmail = _emailController.text.trim();
+
+        if (uid.isEmpty) throw 'No se encontró una sesión activa.';
 
         // 1. Si el correo cambió, disparamos la lógica de verificación de Firebase Auth
         bool correoModificado = false;
@@ -102,13 +102,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           correoModificado = true;
         }
 
-        // 2. Guardamos el resto de la información del perfil y vehículo
-        await _authService.actualizarPerfilYVehiculo(
-          nombre: _nombreController.text,
-          placa: _placaController.text,
-          modelo: _modeloController.text,
-          color: _colorController.text,
-        );
+        // 2. 🔐 SOLUCIÓN AL ERROR NOT-FOUND: Guardado con combinación (.set + merge)
+        // Evita que falle si el usuario es nuevo y no tiene un documento creado todavía.
+        await FirebaseFirestore.instance.collection('usuarios').doc(uid).set({
+          'nombre': _nombreController.text.trim(),
+          'email': nuevoEmail,
+          'placa': _placaController.text.trim().toUpperCase(),
+          'modelo_marca': _modeloController.text.trim(),
+          'color': _colorController.text.trim(),
+          'rol': 'conductor', // Asegura mantener la persistencia de rol por defecto
+        }, SetOptions(merge: true));
 
         if (mounted) {
           String mensajeExito = 'Perfil y vehículo actualizados correctamente.';
@@ -120,15 +123,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             SnackBar(
               content: Text(mensajeExito),
               backgroundColor: Colors.green,
-              duration: const Duration(seconds: 5),
+              duration: const Duration(seconds: 4),
             ),
           );
-          Navigator.pop(context); // Regresa al Home
+          Navigator.pop(context); // Regresa al Home de forma segura
         }
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
+            SnackBar(content: Text('Error al guardar: $e'), backgroundColor: Colors.red),
           );
         }
       } finally {
@@ -140,6 +143,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: kBg,
       appBar: AppBar(
         title: const Text('Editar Perfil y Vehículo'),
       ),
@@ -165,7 +169,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
               const Divider(height: 24),
 
-              // Input de Nombre Completo
               TextFormField(
                 controller: _nombreController,
                 decoration: InputDecoration(
@@ -177,7 +180,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
               const SizedBox(height: 20),
 
-              // Input de Correo Electrónico (Habilitado y Validado)
               TextFormField(
                 controller: _emailController,
                 keyboardType: TextInputType.emailAddress,
@@ -191,7 +193,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   if (value == null || value.trim().isEmpty) {
                     return 'Ingresa tu correo electrónico';
                   }
-                  // Validación por Expresión Regular estándar para correos
                   if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value.trim())) {
                     return 'El formato del correo electrónico no es válido';
                   }
@@ -213,7 +214,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
               const Divider(height: 24),
 
-              // Input de Placa
               TextFormField(
                 controller: _placaController,
                 textCapitalization: TextCapitalization.characters,
@@ -227,7 +227,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
               const SizedBox(height: 20),
 
-              // Input de Modelo
               TextFormField(
                 controller: _modeloController,
                 decoration: InputDecoration(
@@ -240,7 +239,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
               const SizedBox(height: 20),
 
-              // Input de Color
               TextFormField(
                 controller: _colorController,
                 decoration: InputDecoration(
@@ -253,7 +251,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
               const SizedBox(height: 40),
 
-              // Botón de Guardar Cambios
               _isSaving
                   ? const Center(child: CircularProgressIndicator())
                   : ElevatedButton.icon(
