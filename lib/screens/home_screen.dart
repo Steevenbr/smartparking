@@ -9,14 +9,15 @@ import '../models/parqueadero.dart';
 import 'login_screen.dart';
 import 'disponibilidad_screen.dart';
 import 'reserva_screen.dart';
-import 'mis_reservas_screen.dart'; // Pantalla para comprobantes y cancelaciones
-import 'historial_screen.dart';     // Tu pantalla original de historial
+import 'mis_reservas_screen.dart';
+import 'historial_screen.dart';
 import 'mapa_screen.dart';
 import 'tarifas_screen.dart';
 import 'mis_garajes_screen.dart';
 import 'reportes_graficos_screen.dart';
 import 'edit_profile_screen.dart';
 import 'sesion_activa_screen.dart';
+import 'resenas_screen.dart'; // ⬅️ IMPORTACIÓN DE LA PANTALLA DE RESEÑAS
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -148,18 +149,25 @@ class _HomeScreenState extends State<HomeScreen> {
         'requiereAuth': false,
       },
       {
-        'title': 'Mis Reservas', // ⬅️ Opción para Comprobantes y Cancelaciones parciales
+        'title': 'Mis Reservas',
         'icon': Icons.event_note_rounded,
         'color': Colors.indigo,
         'pantalla': const MisReservasScreen(),
         'requiereAuth': true,
       },
       {
-        'title': 'Mi Historial', // ⬅️ Tu opción original restaurada junto a la otra
+        'title': 'Mi Historial',
         'icon': Icons.history_rounded,
         'color': Colors.orange,
         'pantalla': const HistorialScreen(),
         'requiereAuth': true,
+      },
+      {
+        'title': 'Reseñas y Opiniones', // ⭐️ NUEVA TARJETA
+        'icon': Icons.star_rate_rounded,
+        'color': Colors.amber.shade800,
+        'pantalla': const ResenasScreen(),
+        'requiereAuth': false,
       },
       {
         'title': 'Mi Perfil y Vehículo',
@@ -182,6 +190,12 @@ class _HomeScreenState extends State<HomeScreen> {
         'icon': Icons.analytics_rounded,
         'color': Colors.orange.shade800,
         'pantalla': const ReportesGraficosScreen(),
+      },
+      {
+        'title': 'Reseñas de Clientes', // ⭐️ TARJETA AÑADIDA TAMBIÉN PARA EL DUEÑO/ADMIN
+        'icon': Icons.rate_review_rounded,
+        'color': Colors.teal,
+        'pantalla': const ResenasScreen(),
       },
     ];
 
