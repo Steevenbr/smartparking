@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../theme.dart';
 import '../models/parqueadero.dart';
@@ -67,50 +68,207 @@ class _SesionActivaScreenState extends State<SesionActivaScreen> {
     return '${dos(d.inHours)}:${dos(d.inMinutes % 60)}:${dos(d.inSeconds % 60)}';
   }
 
+  // ⭐️ Modal emergente para calificar incluyendo el nombre real del usuario logueado
+  Future<void> _mostrarDialogoResena(String parqueaderoId, String parqueaderoNombre) async {
+    double calificacion = 5.0;
+    final comentarioController = TextEditingController();
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (contextDialog) {
+        return StatefulBuilder(
+          builder: (contextDialog, setStateDialog) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: Column(
+                children: [
+                  const Icon(Icons.stars_rounded, color: Colors.amber, size: 48),
+                  const SizedBox(height: 8),
+                  Text(
+                    '¿Qué tal tu experiencia en $parqueaderoNombre?',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Tu opinión ayuda a otros conductores a encontrar el mejor lugar.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 12.5, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(5, (index) {
+                      final estrella = index + 1;
+                      return IconButton(
+                        icon: Icon(
+                          estrella <= calificacion ? Icons.star_rounded : Icons.star_outline_rounded,
+                          color: Colors.amber,
+                          size: 32,
+                        ),
+                        onPressed: () {
+                          setStateDialog(() {
+                            calificacion = estrella.toDouble();
+                          });
+                        },
+                      );
+                    }),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: comentarioController,
+                    maxLines: 3,
+                    decoration: InputDecoration(
+                      hintText: 'Escribe un comentario opcional...',
+                      hintStyle: const TextStyle(fontSize: 13),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      contentPadding: const EdgeInsets.all(12),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(contextDialog),
+                  child: const Text('Omitir', style: TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: kPrimary,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onPressed: () async {
+                    final user = FirebaseAuth.instance.currentUser;
+                    if (user != null) {
+                      // 👤 Consulta del nombre registrado en la colección 'usuarios'
+                      String usuarioNombre = user.displayName ?? '';
+
+                      try {
+                        final docUser = await FirebaseFirestore.instance
+                            .collection('usuarios')
+                            .doc(user.uid)
+                            .get();
+
+                        if (docUser.exists && docUser.data() != null) {
+                          final data = docUser.data()!;
+                          usuarioNombre = data['nombre'] ?? data['nombreCompleto'] ?? usuarioNombre;
+                        }
+                      } catch (_) {}
+
+                      if (usuarioNombre.trim().isEmpty) {
+                        usuarioNombre = user.email ?? 'Conductor';
+                      }
+
+                      await FirebaseFirestore.instance.collection('resenas').add({
+                        'parqueaderoId': parqueaderoId,
+                        'parqueaderoNombre': parqueaderoNombre,
+                        'usuarioId': user.uid,
+                        'usuarioNombre': usuarioNombre, // 👈 Nombre asignado
+                        'usuarioEmail': user.email ?? '',
+                        'calificacion': calificacion,
+                        'comentario': comentarioController.text.trim(),
+                        'tipoExperiencia': 'servicio_completado',
+                        'creadoEn': FieldValue.serverTimestamp(),
+                      });
+                    }
+                    if (contextDialog.mounted) Navigator.pop(contextDialog);
+                  },
+                  child: const Text('Enviar Reseña', style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   Future<void> _registrarSalida() async {
     setState(() => _cerrando = true);
     try {
-      final total = await _logic.registrarSalida(
-        widget.registroId,
-        widget.parqueadero.id,
+      final ahora = DateTime.now();
+
+      // 1. Obtener los datos del documento (sea 'registros' o 'reservas')
+      DocumentSnapshot snap = await FirebaseFirestore.instance
+          .collection('registros')
+          .doc(widget.registroId)
+          .get();
+
+      bool esReservaAnticipada = false;
+      if (!snap.exists) {
+        snap = await FirebaseFirestore.instance
+            .collection('reservas')
+            .doc(widget.registroId)
+            .get();
+        esReservaAnticipada = snap.exists;
+      }
+
+      final data = Map<String, dynamic>.from(snap.data() as Map? ?? {});
+      final p = widget.parqueadero;
+
+      // 2. Calcular el costo según el tiempo REAL utilizado
+      final double costoRealUsado = _logic.calcularCosto(
         widget.horaEntrada,
-        widget.parqueadero.tarifaHora,
-        widget.parqueadero.minutosFraccion,
+        ahora,
+        p.tarifaHora,
+        p.minutosFraccion,
       );
+
+      final double montoPagadoPrevio = (data['montoPagado'] ?? 0.0).toDouble();
+
+      // 💰 Cálculo de Reembolso o Excedente
+      double montoADevolver = 0.0;
+      double montoAdicionalACobrar = 0.0;
+
+      if (esReservaAnticipada && montoPagadoPrevio > 0) {
+        if (montoPagadoPrevio > costoRealUsado) {
+          montoADevolver = montoPagadoPrevio - costoRealUsado;
+        } else if (costoRealUsado > montoPagadoPrevio) {
+          montoAdicionalACobrar = costoRealUsado - montoPagadoPrevio;
+        }
+      }
+
+      // 3. Registrar salida en Firestore y liberar el espacio
+      await _logic.registrarSalida(
+        widget.registroId,
+        p.id,
+        widget.horaEntrada,
+        p.tarifaHora,
+        p.minutosFraccion,
+      );
+
+      // Actualizar campos financieros exactos en Firestore
+      final refDoc = FirebaseFirestore.instance
+          .collection(esReservaAnticipada ? 'reservas' : 'registros')
+          .doc(widget.registroId);
+
+      await refDoc.update({
+        'costoRealUsado': costoRealUsado,
+        'montoReembolsadoAnticipado': montoADevolver,
+        'estadoPago': montoADevolver > 0 ? 'reembolsado_parcial' : 'completado',
+      });
+
       _timer?.cancel();
+
+      // 4. Preparar datos para el PDF
+      data['parqueaderoNombre'] = data['parqueaderoNombre'] ?? p.nombre;
+      data['parqueaderoDireccion'] = data['parqueaderoDireccion'] ?? p.direccion;
+      data['tarifaHora'] = data['tarifaHora'] ?? p.tarifaHora;
+      data['minutosFraccion'] = data['minutosFraccion'] ?? p.minutosFraccion;
+      data['costo'] = costoRealUsado; // Guarda el costo real por tiempo usado
+      data['montoPagado'] = montoPagadoPrevio;
+      data['montoReembolsado'] = montoADevolver;
+      data['horaEntrada'] ??= Timestamp.fromDate(widget.horaEntrada);
+      data['horaSalida'] = Timestamp.fromDate(ahora);
 
       String? archivo;
       String? errorPdf;
       try {
-        // Intenta obtener primero de la colección 'registros'
-        DocumentSnapshot snap = await FirebaseFirestore.instance
-            .collection('registros')
-            .doc(widget.registroId)
-            .get();
-
-        // Si no existe en 'registros', busca en la colección 'reservas'
-        if (!snap.exists) {
-          snap = await FirebaseFirestore.instance
-              .collection('reservas')
-              .doc(widget.registroId)
-              .get();
-        }
-
-        final data = Map<String, dynamic>.from(snap.data() as Map? ?? {});
-        final p = widget.parqueadero;
-
-        data['parqueaderoNombre'] = data['parqueaderoNombre'] ?? p.nombre;
-        data['parqueaderoDireccion'] = data['parqueaderoDireccion'] ?? p.direccion;
-        data['tarifaHora'] = data['tarifaHora'] ?? p.tarifaHora;
-        data['minutosFraccion'] = data['minutosFraccion'] ?? p.minutosFraccion;
-        data['horaApertura'] = data['horaApertura'] ?? p.horaApertura;
-        data['horaCierre'] = data['horaCierre'] ?? p.horaCierre;
-        data['espaciosTotales'] = data['espaciosTotales'] ?? p.espaciosTotales;
-        data['puesto'] = data['puesto'] ?? 'A-1';
-        data['costo'] = total;
-        data['horaEntrada'] ??= Timestamp.fromDate(widget.horaEntrada);
-        data['horaSalida'] ??= Timestamp.fromDate(DateTime.now());
-
         final guardado = await ComprobanteService().descargarComprobanteSesion(
           registroId: widget.registroId,
           data: data,
@@ -121,39 +279,75 @@ class _SesionActivaScreenState extends State<SesionActivaScreen> {
       }
 
       if (!mounted) return;
-      final p = widget.parqueadero;
+
+      // 5. Diálogo de liquidación transparente
       await AppDialog.success(
         context: context,
-        title: archivo != null ? 'Comprobante descargado' : 'Sesión finalizada',
+        title: archivo != null ? 'Comprobante generado' : 'Sesión finalizada',
         message: archivo != null
-            ? 'Abre Archivos > Descargas > SmartParking en tu teléfono.'
-            : (errorPdf ?? 'La sesión terminó, pero el PDF no se pudo generar.'),
+            ? 'Comprobante guardado en Archivos > Descargas > SmartParking.'
+            : (errorPdf ?? 'Salida registrada correctamente.'),
         primaryLabel: 'Aceptar',
         extra: AppDialog.summaryBox(
           children: [
             AppDialog.summaryRow('Garaje', p.nombre),
             const SizedBox(height: 6),
-            AppDialog.summaryRow('Dirección', p.direccion),
+            AppDialog.summaryRow('Tiempo utilizado', _formato(_transcurrido)),
             const SizedBox(height: 6),
-            AppDialog.summaryRow('Tiempo Total', _formato(_transcurrido)),
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 10),
-              child: Divider(height: 1),
-            ),
-            AppDialog.summaryRow(
-              'Total a Pagar',
-              '\$${total.toStringAsFixed(2)}',
-              bold: true,
-              large: true,
-              valueColor: const Color(0xFF16A34A),
-            ),
-            if (archivo != null) ...[
-              const SizedBox(height: 8),
-              AppDialog.summaryRow('Archivo', archivo),
+            AppDialog.summaryRow('Costo real del consumo', '\$${costoRealUsado.toStringAsFixed(2)}'),
+
+            if (esReservaAnticipada && montoPagadoPrevio > 0) ...[
+              const SizedBox(height: 6),
+              AppDialog.summaryRow('Monto pagado al reservar', '\$${montoPagadoPrevio.toStringAsFixed(2)}'),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Divider(height: 1),
+              ),
+              if (montoADevolver > 0)
+                AppDialog.summaryRow(
+                  'Diferencia a devolver',
+                  '+\$${montoADevolver.toStringAsFixed(2)}',
+                  bold: true,
+                  large: true,
+                  valueColor: const Color(0xFF16A34A), // Verde
+                )
+              else if (montoAdicionalACobrar > 0)
+                AppDialog.summaryRow(
+                  'Excedente a pagar',
+                  '-\$${montoAdicionalACobrar.toStringAsFixed(2)}',
+                  bold: true,
+                  large: true,
+                  valueColor: Colors.red,
+                )
+              else
+                AppDialog.summaryRow(
+                  'Diferencia',
+                  '\$0.00',
+                  bold: true,
+                  large: true,
+                  valueColor: Colors.blue,
+                ),
+            ] else ...[
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Divider(height: 1),
+              ),
+              AppDialog.summaryRow(
+                'Total a pagar',
+                '\$${costoRealUsado.toStringAsFixed(2)}',
+                bold: true,
+                large: true,
+                valueColor: const Color(0xFF16A34A),
+              ),
             ],
           ],
         ),
       );
+
+      // 6. Lanzar el modal de estrellas/reseña tras cerrar la confirmación
+      if (mounted) {
+        await _mostrarDialogoResena(p.id, p.nombre);
+      }
 
       if (!mounted) return;
       Navigator.pop(context);

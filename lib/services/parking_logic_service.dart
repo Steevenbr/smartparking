@@ -6,7 +6,6 @@ import '../models/parqueadero.dart';
 import 'parqueadero_service.dart';
 
 // Lógica de entrada/salida y cálculo de tarifa (RF-05, RF-06, RF-15, RF-23).
-// Todo el cobro usa la tarifa y la fracción DEL GARAJE, no una config global.
 class ParkingLogicService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -21,12 +20,24 @@ class ParkingLogicService {
     final numeroPuesto = (ocupados + 1).clamp(1, p.espaciosTotales < 1 ? 1 : p.espaciosTotales);
     final puesto = 'P-${numeroPuesto.toString().padLeft(2, '0')}';
 
+    // 👤 Obtener el nombre registrado en la colección 'usuarios'
+    String nombreUsuario = user.displayName ?? '';
+    if (nombreUsuario.trim().isEmpty) {
+      try {
+        final docUser = await _db.collection('usuarios').doc(user.uid).get();
+        if (docUser.exists && docUser.data() != null) {
+          nombreUsuario = docUser.data()!['nombre'] ?? '';
+        }
+      } catch (_) {}
+    }
+
     final ref = await _col.add({
       'usuarioId': user.uid,
+      'usuarioNombre': nombreUsuario, // 👈 ¡CLAVE! Se guarda el nombre del conductor
       'usuarioEmail': user.email ?? '',
+      'duenoId': p.ownerId,
       'parqueaderoId': p.id,
       'parqueaderoNombre': p.nombre,
-      // Snapshot del garaje para el comprobante (RF-19)
       'parqueaderoDireccion': p.direccion,
       'parqueaderoLatitud': p.latitud,
       'parqueaderoLongitud': p.longitud,
@@ -39,9 +50,9 @@ class ParkingLogicService {
       'horaEntrada': FieldValue.serverTimestamp(),
       'horaSalida': null,
       'costo': 0,
-      'estado': 'activo',
+      'estado': 'activa',
     });
-    await _parqueaderos.cambiarEspacios(p.id, -1); // RF-27
+    await _parqueaderos.cambiarEspacios(p.id, -1);
     return ref.id;
   }
 
@@ -55,8 +66,7 @@ class ParkingLogicService {
     return fracciones * precioFraccion;
   }
 
-  // RF-05 + RF-06: Registrar salida. Costo con horas del servidor y la tarifa
-  // del garaje guardada en el registro o reserva.
+  // RF-05 + RF-06: Registrar salida.
   Future<double> registrarSalida(
       String registroId,
       String parqueaderoId,
@@ -65,15 +75,13 @@ class ParkingLogicService {
       int minutosFraccionRespaldo,
       ) async {
 
-    // 1. Verificamos primero si el ID pertenece a la colección 'registros'
     final docRegistroRef = _db.collection('registros').doc(registroId);
     final docRegistroSnap = await docRegistroRef.get();
 
     if (docRegistroSnap.exists) {
-      // --- MANEJO DE REGISTRO ENTRADA FÍSICA ---
       await docRegistroRef.update({
         'horaSalida': FieldValue.serverTimestamp(),
-        'estado': 'finalizado',
+        'estado': 'finalizada',
       });
 
       DateTime entrada = horaEntradaRespaldo;
@@ -96,17 +104,14 @@ class ParkingLogicService {
         if (data['minutosFraccion'] != null) {
           minutosFraccion = data['minutosFraccion'];
         }
-      } catch (_) {
-        // Sin conexión al servidor: usamos los valores locales de respaldo.
-      }
+      } catch (_) {}
 
       final costo = calcularCosto(entrada, salida, tarifaHora, minutosFraccion);
-      await docRegistroRef.update({'costo': costo});
-      await _parqueaderos.cambiarEspacios(parqueaderoId, 1); // RF-27
+      await docRegistroRef.update({'costo': costo, 'montoPagado': costo});
+      await _parqueaderos.cambiarEspacios(parqueaderoId, 1);
       return costo;
 
     } else {
-      // --- MANEJO DE RESERVA ANTICIPADA ---
       final docReservaRef = _db.collection('reservas').doc(registroId);
       final docReservaSnap = await docReservaRef.get();
 
@@ -138,17 +143,16 @@ class ParkingLogicService {
           if (data['minutosFraccion'] != null) {
             minutosFraccion = data['minutosFraccion'];
           }
-        } catch (_) {
-          // Sin conexión al servidor: usamos los valores locales de respaldo.
-        }
+        } catch (_) {}
 
         final costo = calcularCosto(entrada, salida, tarifaHora, minutosFraccion);
         await docReservaRef.update({
           'costoTotal': costo,
           'costo': costo,
+          'montoPagado': costo,
         });
 
-        await _parqueaderos.cambiarEspacios(parqueaderoId, 1); // RF-27
+        await _parqueaderos.cambiarEspacios(parqueaderoId, 1);
         return costo;
       } else {
         throw Exception('No se encontró el documento en registros ni en reservas.');
@@ -156,7 +160,6 @@ class ParkingLogicService {
     }
   }
 
-  // RF-07: Historial de parqueos del usuario actual.
   Stream<List<Registro>> escucharHistorial() {
     final uid = _auth.currentUser?.uid ?? '';
     return _col
@@ -166,16 +169,14 @@ class ParkingLogicService {
         snap.docs.map((d) => Registro.fromFirestore(d)).toList());
   }
 
-  // NUEVO METODO Busca si el usuario tiene una sesión "activa" (sin salida)
   Future<DocumentSnapshot?> obtenerSesionActiva() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return null;
 
-    // 1. Primero busca si hay una sesión activa de entrada física en el parqueadero
     final snapSesion = await FirebaseFirestore.instance
         .collection('registros')
         .where('usuarioId', isEqualTo: user.uid)
-        .where('estado', isEqualTo: 'activo')
+        .where('estado', whereIn: ['activo', 'activa'])
         .limit(1)
         .get();
 
@@ -183,7 +184,6 @@ class ParkingLogicService {
       return snapSesion.docs.first;
     }
 
-    // 2. Si no hay entrada física, busca si tiene una Reserva Activa corriendo (RF-04)
     final snapReserva = await FirebaseFirestore.instance
         .collection('reservas')
         .where('usuarioId', isEqualTo: user.uid)

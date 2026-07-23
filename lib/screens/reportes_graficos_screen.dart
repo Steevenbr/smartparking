@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fl_chart/fl_chart.dart';
 import '../services/auth_service.dart';
 import '../services/reporte_pdf_service.dart';
 import '../theme.dart';
@@ -13,23 +14,6 @@ class ReportesGraficosScreen extends StatefulWidget {
 
 class _ReportesGraficosScreenState extends State<ReportesGraficosScreen> {
   final _authService = AuthService();
-  String _periodoSeleccionado = 'Hoy';
-
-  bool _estaEnPeriodo(DateTime fechaDoc) {
-    final ahora = DateTime.now();
-    final hoyInicio = DateTime(ahora.year, ahora.month, ahora.day);
-
-    if (_periodoSeleccionado == 'Hoy') {
-      return fechaDoc.isAfter(hoyInicio);
-    } else if (_periodoSeleccionado == 'Semana') {
-      final inicioSemana = hoyInicio.subtract(Duration(days: ahora.weekday - 1));
-      return fechaDoc.isAfter(inicioSemana);
-    } else if (_periodoSeleccionado == 'Mes') {
-      final inicioMes = DateTime(ahora.year, ahora.month, 1);
-      return fechaDoc.isAfter(inicioMes);
-    }
-    return true;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -37,239 +21,274 @@ class _ReportesGraficosScreenState extends State<ReportesGraficosScreen> {
 
     if (adminId.isEmpty) {
       return const Scaffold(
-        body: Center(child: Text('Sesión de administrador no válida.')),
+        body: Center(child: Text('No se pudo verificar la sesión del administrador.')),
       );
     }
+
+    final ahora = DateTime.now();
 
     return Scaffold(
       backgroundColor: kBg,
       appBar: AppBar(
-        title: const Text('Reportes Gráficos e Ingresos'),
+        title: const Text('Análisis Gráfico e Indicadores'),
       ),
       body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('reservas')
-            .where('duenoId', isEqualTo: adminId)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+        stream: FirebaseFirestore.instance.collection('reservas').snapshots(),
+        builder: (context, snapshotReservas) {
+          return StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance.collection('registros').snapshots(),
+            builder: (context, snapshotRegistros) {
+              if (snapshotReservas.connectionState == ConnectionState.waiting ||
+                  snapshotRegistros.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
 
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Center(
-              child: Text('No hay datos registrados para generar reportes.'),
-            );
-          }
+              final docsReservas = snapshotReservas.data?.docs ?? [];
+              final docsRegistros = snapshotRegistros.data?.docs ?? [];
 
-          final todosLosDocs = snapshot.data!.docs;
+              // Filtrar por duenoRef (duenoId u ownerId)
+              final listaReservas = docsReservas
+                  .map((doc) {
+                final m = Map<String, dynamic>.from(doc.data() as Map);
+                m['duenoRef'] = m['duenoId'] ?? m['ownerId'] ?? '';
+                return m;
+              })
+                  .where((m) => m['duenoRef'] == adminId || m['duenoRef'] == '')
+                  .toList();
 
-          final docsFiltrados = todosLosDocs.where((doc) {
-            final data = doc.data() as Map<String, dynamic>;
-            final Timestamp? creadoEn = data['creadoEn'];
-            if (creadoEn == null) return false;
-            return _estaEnPeriodo(creadoEn.toDate());
-          }).toList();
+              final listaRegistros = docsRegistros
+                  .map((doc) {
+                final m = Map<String, dynamic>.from(doc.data() as Map);
+                m['duenoRef'] = m['duenoId'] ?? m['ownerId'] ?? '';
+                return m;
+              })
+                  .where((m) => m['duenoRef'] == adminId || m['duenoRef'] == '')
+                  .toList();
 
-          double totalIngresos = 0;
-          int totalUsoReservas = 0;
-          int cancelaciones = 0;
-          Map<String, int> usoPorParqueadero = {};
-          Map<String, double> ingresosPorParqueadero = {};
+              final todosLosDocs = [...listaReservas, ...listaRegistros];
 
-          for (var doc in docsFiltrados) {
-            final data = doc.data() as Map<String, dynamic>;
-            final estado = data['estado'] ?? '';
-            final monto = (data['montoPagado'] ?? 0.0).toDouble();
-            final reembolsado = (data['montoReembolsado'] ?? 0.0).toDouble();
-            final pNombre = data['parqueaderoNombre'] ?? 'Garaje';
-
-            if (estado == 'activa') {
-              totalIngresos += monto;
-              totalUsoReservas++;
-            } else if (estado == 'cancelada') {
-              totalIngresos += (monto - reembolsado);
-              cancelaciones++;
-            }
-
-            usoPorParqueadero[pNombre] = (usoPorParqueadero[pNombre] ?? 0) + 1;
-            ingresosPorParqueadero[pNombre] = (ingresosPorParqueadero[pNombre] ?? 0) +
-                (estado == 'activa' ? monto : (monto - reembolsado));
-          }
-
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(20.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Período de Análisis:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                    DropdownButton<String>(
-                      value: _periodoSeleccionado,
-                      borderRadius: BorderRadius.circular(12),
-                      items: ['Hoy', 'Semana', 'Mes', 'Todo'].map((p) {
-                        return DropdownMenuItem(value: p, child: Text(p));
-                      }).toList(),
-                      onChanged: (val) {
-                        if (val != null) setState(() => _periodoSeleccionado = val);
-                      },
+              if (todosLosDocs.isEmpty) {
+                return const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(24.0),
+                    child: Text(
+                      'No hay suficientes datos registrados para generar las métricas gráficas.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.grey, fontSize: 15),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 16),
+                  ),
+                );
+              }
 
-                Row(
+              double ingresosDiarios = 0.0;
+              int reservasActivas = 0;
+              int cancelaciones = 0;
+
+              Map<String, int> usoPorParqueadero = {};
+              Map<String, double> ingresosPorParqueadero = {};
+
+              final inicioHoy = DateTime(ahora.year, ahora.month, ahora.day);
+              final finHoy = DateTime(ahora.year, ahora.month, ahora.day, 23, 59, 59);
+
+              for (var data in todosLosDocs) {
+                final String parqueadero = data['parqueaderoNombre'] ?? 'Mi Garaje';
+                final String estado = data['estado'] ?? 'finalizada';
+                final double monto = (data['montoPagado'] ?? data['costo'] ?? 0.0).toDouble();
+                final double reembolsado = (data['montoReembolsadoAnticipado'] ?? data['montoReembolsado'] ?? 0.0).toDouble();
+                final Timestamp? creadoEn = data['creadoEn'] ?? data['horaEntrada'] ?? data['fecha'];
+
+                if (estado == 'activa' || estado == 'activo') reservasActivas++;
+                if (estado == 'cancelada') cancelaciones++;
+
+                usoPorParqueadero[parqueadero] = (usoPorParqueadero[parqueadero] ?? 0) + 1;
+
+                double neto = (estado == 'activa' || estado == 'activo') ? monto : (monto - reembolsado);
+                if (neto < 0) neto = 0;
+
+                ingresosPorParqueadero[parqueadero] = (ingresosPorParqueadero[parqueadero] ?? 0) + neto;
+
+                if (creadoEn != null) {
+                  final fechaDoc = creadoEn.toDate();
+                  if (fechaDoc.isAfter(inicioHoy) && fechaDoc.isBefore(finHoy)) {
+                    ingresosDiarios += neto;
+                  }
+                }
+              }
+
+              // 📊 ORDENAR PARQUEADEROS DE MAYOR A MENOR USO
+              final listaOrdenadaUso = usoPorParqueadero.entries.toList()
+                ..sort((a, b) => b.value.compareTo(a.value));
+
+              final int maxUso = listaOrdenadaUso.first.value;
+
+              return SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: _kpiCard(
-                        'Total Recaudado',
-                        '\$${totalIngresos.toStringAsFixed(2)}',
-                        Icons.attach_money_rounded,
-                        Colors.green,
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Frecuencia de Uso',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1F2937)),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.picture_as_pdf_rounded, color: kPrimary),
+                          tooltip: 'Exportar Reporte PDF',
+                          onPressed: () {
+                            ReportePdfService.generarYDescargarReporte(
+                              periodo: 'Hoy (${ahora.day}/${ahora.month}/${ahora.year})',
+                              totalIngresos: ingresosDiarios,
+                              totalReservas: reservasActivas,
+                              cancelaciones: cancelaciones,
+                              usoPorParqueadero: usoPorParqueadero,
+                              ingresosPorParqueadero: ingresosPorParqueadero,
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    const Text(
+                      'Volumen de usos por parqueadero (mayor a menor):',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // 📊 GRÁFICO DE BARRAS HORIZONTALES CON CANTIDAD DE USOS VISIBLES
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
+                      ),
+                      child: Column(
+                        children: listaOrdenadaUso.map((entry) {
+                          final nombre = entry.key;
+                          final usos = entry.value;
+                          final porcentaje = (usos / (maxUso > 0 ? maxUso : 1)).clamp(0.05, 1.0);
+
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        nombre,
+                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF374151)),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: kPrimary.withOpacity(0.12),
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: Text(
+                                        '$usos usos',
+                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: kPrimary),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                Stack(
+                                  children: [
+                                    // Barra de fondo neutra
+                                    Container(
+                                      height: 14,
+                                      width: double.infinity,
+                                      decoration: BoxDecoration(
+                                        color: Colors.grey.shade100,
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                    ),
+                                    // Barra horizontal rellena proporcional al uso
+                                    FractionallySizedBox(
+                                      widthFactor: porcentaje,
+                                      child: Container(
+                                        height: 14,
+                                        decoration: BoxDecoration(
+                                          color: kPrimary,
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          );
+                        }).toList(),
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _kpiCard(
-                        'Uso de Espacios',
-                        '$totalUsoReservas reservas',
-                        Icons.directions_car_rounded,
-                        Colors.blue,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
 
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Frecuencia de Uso por Parqueadero', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                    IconButton(
-                      icon: const Icon(Icons.picture_as_pdf_rounded, color: Colors.red),
-                      tooltip: 'Exportar PDF del período',
-                      onPressed: () {
-                        ReportePdfService.generarYDescargarReporte(
-                          periodo: _periodoSeleccionado,
-                          totalIngresos: totalIngresos,
-                          totalReservas: totalUsoReservas,
-                          cancelaciones: cancelaciones,
-                          usoPorParqueadero: usoPorParqueadero,
-                          ingresosPorParqueadero: ingresosPorParqueadero,
+                    const SizedBox(height: 28),
+
+                    const Text(
+                      'Desglose Monetario por Parqueadero',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1F2937)),
+                    ),
+                    const SizedBox(height: 12),
+
+                    Column(
+                      children: listaOrdenadaUso.map((entry) {
+                        final nombre = entry.key;
+                        final usos = entry.value;
+                        final ingresos = ingresosPorParqueadero[nombre] ?? 0.0;
+
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 1))],
+                          ),
+                          child: Row(
+                            children: [
+                              CircleAvatar(
+                                backgroundColor: kPrimary.withOpacity(0.12),
+                                child: const Icon(Icons.local_parking_rounded, color: kPrimary),
+                              ),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(nombre, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                                    const SizedBox(height: 2),
+                                    Text('$usos servicios completados', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                  ],
+                                ),
+                              ),
+                              Text(
+                                '\$${ingresos.toStringAsFixed(2)}',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF16A34A),
+                                ),
+                              ),
+                            ],
+                          ),
                         );
-                      },
+                      }).toList(),
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
-                _graficoBarrasUso(usoPorParqueadero),
-
-                const SizedBox(height: 28),
-
-                const Text('Desglose Financiero por Establecimiento', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 12),
-                ...ingresosPorParqueadero.entries.map((entry) {
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    child: ListTile(
-                      leading: const CircleAvatar(
-                        backgroundColor: kPrimary,
-                        child: Icon(Icons.storefront_rounded, color: Colors.white, size: 20),
-                      ),
-                      title: Text(entry.key, style: const TextStyle(fontWeight: FontWeight.bold)),
-                      subtitle: Text('Reservas en período: ${usoPorParqueadero[entry.key] ?? 0}'),
-                      trailing: Text(
-                        '\$${entry.value.toStringAsFixed(2)}',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.green),
-                      ),
-                    ),
-                  );
-                }),
-              ],
-            ),
+              );
+            },
           );
         },
-      ),
-    );
-  }
-
-  Widget _kpiCard(String titulo, String valor, IconData icono, Color color) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icono, color: color, size: 28),
-          const SizedBox(height: 8),
-          Text(titulo, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-          const SizedBox(height: 4),
-          Text(valor, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
-        ],
-      ),
-    );
-  }
-
-  Widget _graficoBarrasUso(Map<String, int> datos) {
-    if (datos.isEmpty) {
-      return const Card(
-        child: Padding(
-          padding: EdgeInsets.all(16.0),
-          child: Text('Sin datos en este período.'),
-        ),
-      );
-    }
-
-    final maxVal = datos.values.reduce((a, b) => a > b ? a : b);
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
-      ),
-      child: Column(
-        children: datos.entries.map((entry) {
-          final porcentaje = maxVal > 0 ? (entry.value / maxVal) : 0.0;
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(entry.key, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                    Text('${entry.value} usos', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kPrimary)),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Stack(
-                  children: [
-                    Container(height: 12, decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(6))),
-                    FractionallySizedBox(
-                      widthFactor: porcentaje == 0 ? 0.02 : porcentaje,
-                      child: Container(
-                        height: 12,
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(colors: [kPrimary, Colors.blueAccent]),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          );
-        }).toList(),
       ),
     );
   }
