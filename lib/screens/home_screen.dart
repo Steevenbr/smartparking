@@ -18,7 +18,7 @@ import 'mis_garajes_screen.dart';
 import 'reportes_graficos_screen.dart';
 import 'edit_profile_screen.dart';
 import 'sesion_activa_screen.dart';
-import 'resenas_screen.dart'; // ⬅️ IMPORTACIÓN DE LA PANTALLA DE RESEÑAS
+import 'resenas_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -93,20 +93,40 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _iniciarTimerBanner() {
+    if (_sesionActivaDoc == null) return;
+
     final data = _sesionActivaDoc!.data() as Map<String, dynamic>;
-    final Timestamp? entradaTs = data['horaEntrada'];
+
+    // Evalúa la fecha programada o de entrada
+    final Timestamp? entradaTs = data['fechaProgramada'] ?? data['horaEntrada'] ?? data['creadoEn'];
     if (entradaTs == null) return;
 
-    final horaEntrada = entradaTs.toDate();
-    setState(() {
-      _tiempoTranscurrido = DateTime.now().difference(horaEntrada);
-    });
+    final horaInicio = entradaTs.toDate();
+    final ahora = DateTime.now();
 
+    if (ahora.isBefore(horaInicio)) {
+      setState(() {
+        _tiempoTranscurrido = Duration.zero;
+      });
+    } else {
+      setState(() {
+        _tiempoTranscurrido = ahora.difference(horaInicio);
+      });
+    }
+
+    _bannerTimer?.cancel();
     _bannerTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (mounted) {
-        setState(() {
-          _tiempoTranscurrido = DateTime.now().difference(horaEntrada);
-        });
+        final actual = DateTime.now();
+        if (actual.isBefore(horaInicio)) {
+          setState(() {
+            _tiempoTranscurrido = Duration.zero;
+          });
+        } else {
+          setState(() {
+            _tiempoTranscurrido = actual.difference(horaInicio);
+          });
+        }
       }
     });
   }
@@ -164,7 +184,7 @@ class _HomeScreenState extends State<HomeScreen> {
         'requiereAuth': true,
       },
       {
-        'title': 'Reseñas y Opiniones', // ⭐️ NUEVA TARJETA
+        'title': 'Reseñas y Opiniones',
         'icon': Icons.star_rate_rounded,
         'color': Colors.amber.shade800,
         'pantalla': const ResenasScreen(),
@@ -190,16 +210,16 @@ class _HomeScreenState extends State<HomeScreen> {
         'title': 'Monitoreo y Auditoría',
         'icon': Icons.badge_rounded,
         'color': Colors.orange.shade800,
-        'pantalla': const ReportesAdminScreen(), // ⬅️ Monitoreo directo en vivo y fichas de conductor
+        'pantalla': const ReportesAdminScreen(),
       },
       {
         'title': 'Reportes Gráficos',
         'icon': Icons.bar_chart_rounded,
         'color': Colors.teal.shade700,
-        'pantalla': const ReportesGraficosScreen(), // ⬅️ Análisis por periodo, gráficos y exportación PDF
+        'pantalla': const ReportesGraficosScreen(),
       },
       {
-        'title': 'Reseñas de Clientes', // ⭐️ TARJETA AÑADIDA TAMBIÉN PARA EL DUEÑO/ADMIN
+        'title': 'Reseñas de Clientes',
         'icon': Icons.rate_review_rounded,
         'color': Colors.teal,
         'pantalla': const ResenasScreen(),
@@ -373,10 +393,16 @@ class _HomeScreenState extends State<HomeScreen> {
       minutosFraccion: (data['minutosFraccion'] ?? 15) as int,
       espaciosLibres: 0, espaciosTotales: 0,
     );
-    final Timestamp entradaTs = data['horaEntrada'] ?? Timestamp.now();
+
+    // Mapeo seguro de la fecha programada o fecha de entrada
+    final Timestamp entradaTs = data['fechaProgramada'] ?? data['horaEntrada'] ?? data['creadoEn'] ?? Timestamp.now();
+    final DateTime fechaInicioReal = entradaTs.toDate();
+    final bool esFutura = DateTime.now().isBefore(fechaInicioReal);
+
+    final horaInicioStr = '${fechaInicioReal.hour.toString().padLeft(2, '0')}:${fechaInicioReal.minute.toString().padLeft(2, '0')}';
 
     return Material(
-      color: Colors.amber.shade50,
+      color: esFutura ? Colors.blue.shade50 : Colors.amber.shade50,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
@@ -388,7 +414,7 @@ class _HomeScreenState extends State<HomeScreen> {
               builder: (_) => SesionActivaScreen(
                 registroId: _sesionActivaDoc!.id,
                 parqueadero: p,
-                horaEntrada: entradaTs.toDate(),
+                horaEntrada: fechaInicioReal,
               ),
             ),
           );
@@ -397,30 +423,53 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            border: Border.all(color: Colors.amber.shade300, width: 1.5),
+            border: Border.all(color: esFutura ? Colors.blue.shade300 : Colors.amber.shade300, width: 1.5),
             borderRadius: BorderRadius.circular(16),
           ),
           child: Row(
             children: [
               Container(
                 padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(color: Colors.amber.shade200, shape: BoxShape.circle),
-                child: const Icon(Icons.bolt, color: Colors.amber, size: 24),
+                decoration: BoxDecoration(
+                  color: esFutura ? Colors.blue.shade100 : Colors.amber.shade200,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  esFutura ? Icons.schedule_rounded : Icons.bolt,
+                  color: esFutura ? Colors.blue.shade800 : Colors.amber.shade900,
+                  size: 24,
+                ),
               ),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Tienes un parqueo activo', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                    Text(
+                      esFutura ? 'Reserva Programada' : 'Tienes un parqueo activo',
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                    ),
                     const SizedBox(height: 2),
                     Text('Garaje: ${p.nombre}', style: TextStyle(fontSize: 12.5, color: Colors.grey[700])),
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        const Icon(Icons.access_time_rounded, size: 13.5, color: Colors.amber),
+                        Icon(
+                          esFutura ? Icons.access_time_rounded : Icons.timer_outlined,
+                          size: 13.5,
+                          color: esFutura ? Colors.blue.shade700 : Colors.amber.shade900,
+                        ),
                         const SizedBox(width: 4),
-                        Text('Tiempo: ${_formatoDuracion(_tiempoTranscurrido)}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Colors.amber)),
+                        Text(
+                          esFutura
+                              ? 'Inicia hoy a las $horaInicioStr'
+                              : 'Tiempo: ${_formatoDuracion(_tiempoTranscurrido)}',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.bold,
+                            color: esFutura ? Colors.blue.shade700 : Colors.amber.shade900,
+                          ),
+                        ),
                       ],
                     ),
                   ],

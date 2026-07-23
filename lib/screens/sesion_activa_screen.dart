@@ -34,16 +34,31 @@ class _SesionActivaScreenState extends State<SesionActivaScreen> {
   @override
   void initState() {
     super.initState();
+    _calcularActualizacion();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      setState(() {
-        _transcurrido = DateTime.now().difference(widget.horaEntrada);
+      if (mounted) {
+        _calcularActualizacion();
+      }
+    });
+  }
+
+  void _calcularActualizacion() {
+    final ahora = DateTime.now();
+    final bool esFutura = ahora.isBefore(widget.horaEntrada);
+
+    setState(() {
+      if (esFutura) {
+        _transcurrido = Duration.zero;
+        _costo = 0.0;
+      } else {
+        _transcurrido = ahora.difference(widget.horaEntrada);
         _costo = _logic.calcularCosto(
           widget.horaEntrada,
-          DateTime.now(),
+          ahora,
           widget.parqueadero.tarifaHora,
           widget.parqueadero.minutosFraccion,
         );
-      });
+      }
     });
   }
 
@@ -67,22 +82,31 @@ class _SesionActivaScreenState extends State<SesionActivaScreen> {
       String? archivo;
       String? errorPdf;
       try {
-        final snap = await FirebaseFirestore.instance
+        // Intenta obtener primero de la colección 'registros'
+        DocumentSnapshot snap = await FirebaseFirestore.instance
             .collection('registros')
             .doc(widget.registroId)
             .get();
-        final data = Map<String, dynamic>.from(snap.data() ?? {});
+
+        // Si no existe en 'registros', busca en la colección 'reservas'
+        if (!snap.exists) {
+          snap = await FirebaseFirestore.instance
+              .collection('reservas')
+              .doc(widget.registroId)
+              .get();
+        }
+
+        final data = Map<String, dynamic>.from(snap.data() as Map? ?? {});
         final p = widget.parqueadero;
 
         data['parqueaderoNombre'] = data['parqueaderoNombre'] ?? p.nombre;
-        data['parqueaderoDireccion'] =
-            data['parqueaderoDireccion'] ?? p.direccion;
+        data['parqueaderoDireccion'] = data['parqueaderoDireccion'] ?? p.direccion;
         data['tarifaHora'] = data['tarifaHora'] ?? p.tarifaHora;
         data['minutosFraccion'] = data['minutosFraccion'] ?? p.minutosFraccion;
         data['horaApertura'] = data['horaApertura'] ?? p.horaApertura;
         data['horaCierre'] = data['horaCierre'] ?? p.horaCierre;
         data['espaciosTotales'] = data['espaciosTotales'] ?? p.espaciosTotales;
-        data['puesto'] = data['puesto'] ?? 'N/A';
+        data['puesto'] = data['puesto'] ?? 'A-1';
         data['costo'] = total;
         data['horaEntrada'] ??= Timestamp.fromDate(widget.horaEntrada);
         data['horaSalida'] ??= Timestamp.fromDate(DateTime.now());
@@ -100,26 +124,24 @@ class _SesionActivaScreenState extends State<SesionActivaScreen> {
       final p = widget.parqueadero;
       await AppDialog.success(
         context: context,
-        title:
-            archivo != null ? 'Comprobante descargado' : 'Sesion finalizada',
+        title: archivo != null ? 'Comprobante descargado' : 'Sesión finalizada',
         message: archivo != null
-            ? 'Abre Archivos > Descargas > SmartParking en tu telefono.'
-            : (errorPdf ??
-                'La sesion termino, pero el PDF no se pudo descargar.'),
+            ? 'Abre Archivos > Descargas > SmartParking en tu teléfono.'
+            : (errorPdf ?? 'La sesión terminó, pero el PDF no se pudo generar.'),
         primaryLabel: 'Aceptar',
         extra: AppDialog.summaryBox(
           children: [
             AppDialog.summaryRow('Garaje', p.nombre),
             const SizedBox(height: 6),
-            AppDialog.summaryRow('Direccion', p.direccion),
+            AppDialog.summaryRow('Dirección', p.direccion),
             const SizedBox(height: 6),
-            AppDialog.summaryRow('Tiempo', _formato(_transcurrido)),
+            AppDialog.summaryRow('Tiempo Total', _formato(_transcurrido)),
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 10),
               child: Divider(height: 1),
             ),
             AppDialog.summaryRow(
-              'Precio a pagar',
+              'Total a Pagar',
               '\$${total.toStringAsFixed(2)}',
               bold: true,
               large: true,
@@ -154,6 +176,9 @@ class _SesionActivaScreenState extends State<SesionActivaScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bool esFutura = DateTime.now().isBefore(widget.horaEntrada);
+    final horaInicioStr = '${widget.horaEntrada.hour.toString().padLeft(2, '0')}:${widget.horaEntrada.minute.toString().padLeft(2, '0')}';
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Sesión de parqueo activa'),
@@ -226,15 +251,15 @@ class _SesionActivaScreenState extends State<SesionActivaScreen> {
               ),
               child: Column(
                 children: [
-                  const Row(
+                  Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.circle, size: 10, color: Colors.green),
-                      SizedBox(width: 8),
+                      Icon(Icons.circle, size: 10, color: esFutura ? Colors.blue : Colors.green),
+                      const SizedBox(width: 8),
                       Text(
-                        'EN CURSO',
+                        esFutura ? 'PROGRAMADA (Inicia $horaInicioStr)' : 'EN CURSO',
                         style: TextStyle(
-                          color: Colors.green,
+                          color: esFutura ? Colors.blue.shade700 : Colors.green,
                           fontWeight: FontWeight.bold,
                           letterSpacing: 1.2,
                           fontSize: 13,
@@ -284,6 +309,7 @@ class _SesionActivaScreenState extends State<SesionActivaScreen> {
               style: FilledButton.styleFrom(
                 backgroundColor: Colors.red,
                 padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
               ),
               icon: const Icon(Icons.download_rounded),
               onPressed: _cerrando ? null : _registrarSalida,
@@ -291,6 +317,7 @@ class _SesionActivaScreenState extends State<SesionActivaScreen> {
                 _cerrando
                     ? 'Descargando comprobante...'
                     : 'Registrar salida y descargar comprobante',
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
               ),
             ),
           ],

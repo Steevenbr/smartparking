@@ -83,7 +83,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
-  // Envía las modificaciones validadas a Firestore solucionando el error not-found
   Future<void> _guardarCambios() async {
     if (_formKey.currentState!.validate()) {
       setState(() => _isSaving = true);
@@ -92,29 +91,51 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         final uid = _authService.uid;
         final emailActual = _authService.usuarioActual?.email ?? '';
         final nuevoEmail = _emailController.text.trim();
+        final nuevoNombre = _nombreController.text.trim();
+        final nuevaPlaca = _placaController.text.trim().toUpperCase();
+        final nuevoModelo = _modeloController.text.trim();
+        final nuevoColor = _colorController.text.trim();
 
         if (uid.isEmpty) throw 'No se encontró una sesión activa.';
 
-        // 1. Si el correo cambió, disparamos la lógica de verificación de Firebase Auth
         bool correoModificado = false;
         if (nuevoEmail != emailActual && nuevoEmail.isNotEmpty) {
           await _authService.actualizarEmail(nuevoEmail);
           correoModificado = true;
         }
 
-        // 2. 🔐 SOLUCIÓN AL ERROR NOT-FOUND: Guardado con combinación (.set + merge)
-        // Evita que falle si el usuario es nuevo y no tiene un documento creado todavía.
+        // 1. Guardar o actualizar en la colección principal 'usuarios'
         await FirebaseFirestore.instance.collection('usuarios').doc(uid).set({
-          'nombre': _nombreController.text.trim(),
+          'nombre': nuevoNombre,
           'email': nuevoEmail,
-          'placa': _placaController.text.trim().toUpperCase(),
-          'modelo_marca': _modeloController.text.trim(),
-          'color': _colorController.text.trim(),
-          'rol': 'conductor', // Asegura mantener la persistencia de rol por defecto
+          'placa': nuevaPlaca,
+          'modelo_marca': nuevoModelo,
+          'color': nuevoColor,
+          'rol': 'conductor',
         }, SetOptions(merge: true));
 
+        // 2. 🔄 SINCRONIZACIÓN EN CASCADA: Actualiza los datos del vehículo en las reservas activas
+        final reservasUsuario = await FirebaseFirestore.instance
+            .collection('reservas')
+            .where('usuarioId', isEqualTo: uid)
+            .get();
+
+        if (reservasUsuario.docs.isNotEmpty) {
+          final batch = FirebaseFirestore.instance.batch();
+          for (var doc in reservasUsuario.docs) {
+            batch.update(doc.reference, {
+              'usuarioNombre': nuevoNombre,
+              'usuarioEmail': nuevoEmail,
+              'vehiculoPlaca': nuevaPlaca,
+              'vehiculoMarcaModelo': nuevoModelo,
+              'vehiculoColor': nuevoColor,
+            });
+          }
+          await batch.commit();
+        }
+
         if (mounted) {
-          String mensajeExito = 'Perfil y vehículo actualizados correctamente.';
+          String mensajeExito = 'Perfil, vehículo y reservas actualizados correctamente.';
           if (correoModificado) {
             mensajeExito += ' Se envió un correo de confirmación a su nueva dirección.';
           }
@@ -126,7 +147,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               duration: const Duration(seconds: 4),
             ),
           );
-          Navigator.pop(context); // Regresa al Home de forma segura
+          Navigator.pop(context);
         }
       } catch (e) {
         if (mounted) {

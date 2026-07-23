@@ -228,12 +228,14 @@ class _ReportesAdminScreenState extends State<ReportesAdminScreen> {
     );
   }
 
+  // 🛠️ LISTA RESUMIDA: Se quitó la fila del vehículo para evitar inconsistencias visuales
   Widget _buildActivityTile(BuildContext context, Map<String, dynamic> data) {
     final String parqueadero = data['parqueaderoNombre'] ?? 'Mi Garaje';
     final String estado = data['estado'] ?? 'desconocido';
-    final String conductorNombre = data['usuarioNombre'] ?? data['usuarioEmail'] ?? 'Usuario Prueba';
-    final double total = (data['montoPagado'] ?? 0.0).toDouble();
-    final double reembolsado = (data['montoReembolsado'] ?? 0.0).toDouble();
+
+    final String conductorNombre = (data['usuarioNombre'] != null && data['usuarioNombre'].toString().trim().isNotEmpty)
+        ? data['usuarioNombre']
+        : (data['usuarioEmail'] ?? 'Conductor sin nombre');
 
     IconData icon;
     Color color;
@@ -278,7 +280,7 @@ class _ReportesAdminScreenState extends State<ReportesAdminScreen> {
                 Expanded(
                   child: Text(
                     conductorNombre,
-                    style: TextStyle(fontSize: 11.5, color: Colors.grey.shade700, fontWeight: FontWeight.w500),
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade700, fontWeight: FontWeight.w500),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -287,13 +289,38 @@ class _ReportesAdminScreenState extends State<ReportesAdminScreen> {
             ),
           ],
         ),
-        isThreeLine: true,
         trailing: const Icon(Icons.info_outline_rounded, color: Colors.grey, size: 20),
       ),
     );
   }
 
-  void _mostrarFichaAuditoria(BuildContext context, Map<String, dynamic> data) {
+  // 🔍 FICHA COMPLETA: Consulta dinámicamente el perfil del usuario para mostrar datos reales
+  void _mostrarFichaAuditoria(BuildContext context, Map<String, dynamic> data) async {
+    final usuarioId = data['usuarioId'] ?? '';
+
+    Map<String, dynamic> perfilActual = {};
+    if (usuarioId.toString().isNotEmpty) {
+      final docUser = await FirebaseFirestore.instance.collection('usuarios').doc(usuarioId).get();
+      if (docUser.exists && docUser.data() != null) {
+        perfilActual = docUser.data()!;
+      }
+    }
+
+    final nombre = (perfilActual['nombre'] != null && perfilActual['nombre'].toString().trim().isNotEmpty)
+        ? perfilActual['nombre']
+        : ((data['usuarioNombre'] != null && data['usuarioNombre'].toString().trim().isNotEmpty)
+        ? data['usuarioNombre']
+        : (data['usuarioEmail'] ?? '-'));
+
+    final email = perfilActual['email'] ?? data['usuarioEmail'] ?? '-';
+    final telefono = perfilActual['telefono'] ?? data['usuarioTelefono'] ?? '-';
+
+    final placa = perfilActual['placa'] ?? data['vehiculoPlaca'] ?? '-';
+    final modelo = perfilActual['modelo_marca'] ?? data['vehiculoMarcaModelo'] ?? '-';
+    final color = perfilActual['color'] ?? data['vehiculoColor'] ?? '-';
+
+    if (!context.mounted) return;
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
@@ -323,17 +350,17 @@ class _ReportesAdminScreenState extends State<ReportesAdminScreen> {
 
               const Text('INFORMACIÓN DEL CONDUCTOR', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
               const SizedBox(height: 8),
-              _itemFicha(Icons.person, 'Nombre', data['usuarioNombre'] ?? 'Usuario Prueba'),
-              _itemFicha(Icons.email, 'Correo Electrónico', data['usuarioEmail'] ?? 'Sin correo'),
-              _itemFicha(Icons.phone, 'Teléfono de Contacto', data['usuarioTelefono'] ?? 'S/N'),
+              _itemFicha(Icons.person, 'Nombre', nombre),
+              _itemFicha(Icons.email, 'Correo Electrónico', email),
+              _itemFicha(Icons.phone, 'Teléfono de Contacto', telefono),
 
               const SizedBox(height: 16),
 
               const Text('DATOS DEL VEHÍCULO ASOCIADO', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
               const SizedBox(height: 8),
-              _itemFicha(Icons.credit_card_rounded, 'Número de Placa', data['vehiculoPlaca'] ?? 'PBX-1234', resaltar: true),
-              _itemFicha(Icons.directions_car, 'Modelo / Marca', data['vehiculoMarcaModelo'] ?? 'KIA Picanto'),
-              _itemFicha(Icons.palette_rounded, 'Color del Vehículo', data['vehiculoColor'] ?? 'Gris'),
+              _itemFicha(Icons.credit_card_rounded, 'Número de Placa', placa, resaltar: placa != '-'),
+              _itemFicha(Icons.directions_car, 'Modelo / Marca', modelo),
+              _itemFicha(Icons.palette_rounded, 'Color del Vehículo', color),
             ],
           ),
         );
@@ -355,7 +382,9 @@ class _ReportesAdminScreenState extends State<ReportesAdminScreen> {
               style: TextStyle(
                   fontSize: 13.5,
                   fontWeight: resaltar ? FontWeight.bold : FontWeight.w600,
-                  color: resaltar ? Colors.indigo.shade900 : const Color(0xFF374151)
+                  color: value == '-'
+                      ? Colors.grey.shade400
+                      : (resaltar ? Colors.indigo.shade900 : const Color(0xFF374151))
               ),
               textAlign: TextAlign.end,
             ),

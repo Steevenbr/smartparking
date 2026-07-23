@@ -41,7 +41,8 @@ class _ResenasScreenState extends State<ResenasScreen> {
   }
 
   void _abrirFormularioModal(BuildContext context) {
-    if (_authService.uid.isEmpty) {
+    final uid = _authService.uid;
+    if (uid.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Debes iniciar sesión para publicar una reseña.')),
       );
@@ -81,33 +82,78 @@ class _ResenasScreenState extends State<ResenasScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  const Text('Escribir una Reseña', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1F2937))),
+                  const Text(
+                    'Calificar Servicio (RF-17)',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1F2937)),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Selecciona uno de los parqueaderos que has utilizado recientemente:',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
                   const SizedBox(height: 16),
 
+                  // 🔐 VALIDACIÓN RF-17: Consulta solo las reservas reales del usuario conectado
                   StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance.collection('parqueaderos').snapshots(),
+                    stream: FirebaseFirestore.instance
+                        .collection('reservas')
+                        .where('usuarioId', isEqualTo: uid)
+                        .snapshots(),
                     builder: (context, snapshot) {
                       if (!snapshot.hasData) return const LinearProgressIndicator();
-                      final docs = snapshot.data!.docs;
+
+                      final docsReservas = snapshot.data!.docs;
+
+                      if (docsReservas.isEmpty) {
+                        return Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.shade50,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.orange.shade200),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.info_outline, color: Colors.orange),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Debes reservar o utilizar al menos un parqueadero antes de emitir una valoración.',
+                                  style: TextStyle(fontSize: 12, color: Colors.black87),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+
+                      // Mapeo único de parqueaderos que el usuario realmente usó
+                      final Map<String, String> parqueaderosUsados = {};
+                      for (var doc in docsReservas) {
+                        final data = doc.data() as Map<String, dynamic>;
+                        final pId = data['parqueaderoId'] ?? '';
+                        final pNombre = data['parqueaderoNombre'] ?? 'Garaje';
+                        if (pId.isNotEmpty) {
+                          parqueaderosUsados[pId] = pNombre;
+                        }
+                      }
 
                       return DropdownButtonFormField<String>(
                         decoration: InputDecoration(
-                          labelText: 'Selecciona el Parqueadero',
+                          labelText: 'Parqueadero Utilizado',
+                          prefixIcon: const Icon(Icons.local_parking_rounded),
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                         ),
-                        items: docs.map((doc) {
-                          final data = doc.data() as Map<String, dynamic>;
+                        items: parqueaderosUsados.entries.map((entry) {
                           return DropdownMenuItem<String>(
-                            value: doc.id,
-                            child: Text(data['nombre'] ?? 'Parqueadero'),
+                            value: entry.key,
+                            child: Text(entry.value),
                           );
                         }).toList(),
                         onChanged: (val) {
-                          final pDoc = docs.firstWhere((element) => element.id == val);
-                          final data = pDoc.data() as Map<String, dynamic>;
                           setModalState(() {
                             parqueaderoSeleccionadoId = val;
-                            parqueaderoSeleccionadoNombre = data['nombre'];
+                            parqueaderoSeleccionadoNombre = parqueaderosUsados[val];
                           });
                         },
                       );
@@ -115,6 +161,7 @@ class _ResenasScreenState extends State<ResenasScreen> {
                   ),
                   const SizedBox(height: 16),
 
+                  // Selector de Estrellas
                   const Text('Puntuación:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.grey)),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -157,7 +204,7 @@ class _ResenasScreenState extends State<ResenasScreen> {
                       onPressed: () async {
                         if (parqueaderoSeleccionadoId == null || comentarioController.text.trim().isEmpty) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Selecciona un parqueadero y escribe un comentario.')),
+                            const SnackBar(content: Text('Por favor, selecciona un parqueadero utilizado e ingresa un comentario.')),
                           );
                           return;
                         }
@@ -197,13 +244,12 @@ class _ResenasScreenState extends State<ResenasScreen> {
       appBar: AppBar(
         title: Text(_esDueno ? 'Opiniones de Clientes' : 'Reseñas y Experiencias'),
       ),
-      // 🔐 OCULTAR BOTÓN FLOTANTE SI ES DUENO O SI AÚN ESTÁ CARGANDO EL ROL
       floatingActionButton: (_esDueno || _cargandoRol)
           ? null
           : FloatingActionButton.extended(
         backgroundColor: Colors.amber.shade800,
         icon: const Icon(Icons.rate_review_rounded, color: Colors.white),
-        label: const Text('Calificar', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        label: const Text('Calificar Parqueo', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         onPressed: () => _abrirFormularioModal(context),
       ),
       body: StreamBuilder<QuerySnapshot>(

@@ -18,9 +18,9 @@ class _MisReservasScreenState extends State<MisReservasScreen> {
   bool _descargando = false;
 
   Future<void> _descargarComprobante(
-    String reservaId,
-    Map<String, dynamic> data,
-  ) async {
+      String reservaId,
+      Map<String, dynamic> data,
+      ) async {
     if (_descargando) return;
     setState(() => _descargando = true);
     try {
@@ -54,16 +54,16 @@ class _MisReservasScreenState extends State<MisReservasScreen> {
   }
 
   Future<void> _confirmarCancelacion(
-    BuildContext context,
-    String reservaId,
-    String nombre,
-    double montoPagado,
-  ) async {
+      BuildContext context,
+      String reservaId,
+      String nombre,
+      double montoPagado,
+      ) async {
     final service = ReservaService();
     final reembolso = service.calcularReembolso(montoPagado);
     final penalidad = montoPagado - reembolso;
     final penalidadPct =
-        (ReservaService.penalidadCancelacion * 100).toStringAsFixed(0);
+    (ReservaService.penalidadCancelacion * 100).toStringAsFixed(0);
 
     final confirmar = await AppDialog.confirm(
       context: context,
@@ -177,7 +177,7 @@ class _MisReservasScreenState extends State<MisReservasScreen> {
                     const SizedBox(height: 8),
                     Text(
                       'Crea una desde "Reservar Lugar" y aquí\n'
-                      'podrás ver el comprobante digital.',
+                          'podrás ver el comprobante digital.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: Colors.grey.shade600,
@@ -240,11 +240,42 @@ class _ReservaCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final activa = data['estado'] == 'activa';
+    final String estado = data['estado'] ?? '';
+    final bool activa = estado == 'activa';
+    final bool concluida = estado == 'concluido' || estado == 'finalizada' || estado == 'finalizado' || estado == 'completada';
+    final bool cancelada = estado == 'cancelada';
+
     final nombre = data['parqueaderoNombre'] ?? 'Parqueadero';
     final montoPagado = (data['montoPagado'] ?? 0).toDouble();
     final montoReembolsado = (data['montoReembolsado'] ?? 0).toDouble();
     final metodoPago = data['metodoPago'];
+
+    // Configuración dinámica según el estado real de la reserva
+    Color colorFranja;
+    Color colorFondoTag;
+    Color colorTextoTag;
+    String textoEstado;
+    IconData iconoEstado;
+
+    if (activa) {
+      colorFranja = const Color(0xFF22C55E);
+      colorFondoTag = const Color(0xFFDCFCE7);
+      colorTextoTag = const Color(0xFF15803D);
+      textoEstado = 'ACTIVA';
+      iconoEstado = Icons.event_available;
+    } else if (concluida) {
+      colorFranja = const Color(0xFF0284C7);
+      colorFondoTag = const Color(0xFFE0F2FE);
+      colorTextoTag = const Color(0xFF0369A1);
+      textoEstado = 'FINALIZADA';
+      iconoEstado = Icons.check_circle_outline_rounded;
+    } else {
+      colorFranja = Colors.grey.shade400;
+      colorFondoTag = Colors.grey.shade200;
+      colorTextoTag = Colors.grey.shade700;
+      textoEstado = 'CANCELADA';
+      iconoEstado = Icons.event_busy;
+    }
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -264,11 +295,11 @@ class _ReservaCard extends StatelessWidget {
       ),
       child: Column(
         children: [
-          // Franja superior de color
+          // Franja superior de color dinámico
           Container(
             height: 4,
             decoration: BoxDecoration(
-              color: activa ? const Color(0xFF22C55E) : Colors.grey.shade400,
+              color: colorFranja,
               borderRadius: const BorderRadius.vertical(
                 top: Radius.circular(18),
               ),
@@ -285,16 +316,12 @@ class _ReservaCard extends StatelessWidget {
                       width: 42,
                       height: 42,
                       decoration: BoxDecoration(
-                        color: activa
-                            ? const Color(0xFFDCFCE7)
-                            : Colors.grey.shade100,
+                        color: colorFondoTag,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Icon(
-                        activa ? Icons.event_available : Icons.event_busy,
-                        color: activa
-                            ? const Color(0xFF16A34A)
-                            : Colors.grey.shade600,
+                        iconoEstado,
+                        color: colorTextoTag,
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -324,19 +351,15 @@ class _ReservaCard extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 10, vertical: 5),
                       decoration: BoxDecoration(
-                        color: activa
-                            ? const Color(0xFFDCFCE7)
-                            : Colors.grey.shade200,
+                        color: colorFondoTag,
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
-                        activa ? 'ACTIVA' : 'CANCELADA',
+                        textoEstado,
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.bold,
-                          color: activa
-                              ? const Color(0xFF15803D)
-                              : Colors.grey.shade700,
+                          color: colorTextoTag,
                         ),
                       ),
                     ),
@@ -381,7 +404,7 @@ class _ReservaCard extends StatelessWidget {
                             child: _metaItem(
                               Icons.payments_outlined,
                               '\$${montoPagado.toStringAsFixed(2)}'
-                              '${metodoPago != null ? ' · $metodoPago' : ''}',
+                                  '${metodoPago != null ? ' · $metodoPago' : ''}',
                             ),
                           ),
                         ],
@@ -389,7 +412,7 @@ class _ReservaCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (!activa && montoReembolsado > 0) ...[
+                if (cancelada && montoReembolsado > 0) ...[
                   const SizedBox(height: 10),
                   Container(
                     width: double.infinity,
@@ -430,10 +453,10 @@ class _ReservaCard extends StatelessWidget {
                   onPressed: descargando ? null : onDescargar,
                   icon: descargando
                       ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
                       : const Icon(Icons.picture_as_pdf_outlined),
                   label: Text(
                     descargando

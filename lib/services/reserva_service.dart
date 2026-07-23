@@ -23,6 +23,28 @@ class ReservaService {
     return montoPagado * (1 - penalidadCancelacion);
   }
 
+  // Convierte los strings de fecha (DD/MM/YYYY) y hora (HH:MM) a un DateTime real
+  DateTime _construirFechaProgramada(String fechaStr, String horaStr) {
+    try {
+      final partesFecha = fechaStr.split('/');
+      final partesHora = horaStr.split(':');
+
+      if (partesFecha.length == 3 && partesHora.length == 2) {
+        final dia = int.parse(partesFecha[0]);
+        final mes = int.parse(partesFecha[1]);
+        final anio = int.parse(partesFecha[2]);
+
+        final hora = int.parse(partesHora[0]);
+        final minuto = int.parse(partesHora[1]);
+
+        return DateTime(anio, mes, dia, hora, minuto);
+      }
+    } catch (_) {
+      // En caso de formato inesperado, retorna la fecha/hora actual
+    }
+    return DateTime.now();
+  }
+
   // RF-04 + pago anticipado: crea la reserva ya pagada.
   // La transacción valida disponibilidad, descuenta el espacio y clona datos para auditoría del Admin.
   Future<String> crearReservaPagada({
@@ -41,6 +63,9 @@ class ReservaService {
 
     // 👤 Referencia al documento del usuario en Firestore para extraer su información de perfil
     final refUsuario = _db.collection('usuarios').doc(user.uid);
+
+    // 🛠️ Construimos la estampa de tiempo real en la que INICIA la reserva
+    final fechaProgramada = _construirFechaProgramada(fecha, hora);
 
     await _db.runTransaction((tx) async {
       // Lectura en paralelo de parqueadero y usuario dentro del hilo de la transacción
@@ -78,6 +103,11 @@ class ReservaService {
         'duenoId': ownerId, // Sincronizado para el panel del Administrador
         'fecha': fecha,
         'hora': hora,
+
+        // 🗓️ CAMPO CLAVE: Fecha y hora exacta programada para el inicio del parqueo
+        'fechaProgramada': Timestamp.fromDate(fechaProgramada),
+        'horaEntrada': Timestamp.fromDate(fechaProgramada),
+
         'duracionHoras': duracionHoras,
         'tarifaHora': tarifaHora,
 
