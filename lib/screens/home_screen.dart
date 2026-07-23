@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:smart_parking/screens/reportes_admin_screen.dart';
 import '../services/auth_service.dart';
 import '../services/parking_logic_service.dart';
 import '../theme.dart';
@@ -186,10 +187,16 @@ class _HomeScreenState extends State<HomeScreen> {
         'pantalla': const MisGarajesScreen(),
       },
       {
-        'title': 'Reportes y Ganancias',
-        'icon': Icons.analytics_rounded,
+        'title': 'Monitoreo y Auditoría',
+        'icon': Icons.badge_rounded,
         'color': Colors.orange.shade800,
-        'pantalla': const ReportesGraficosScreen(),
+        'pantalla': const ReportesAdminScreen(), // ⬅️ Monitoreo directo en vivo y fichas de conductor
+      },
+      {
+        'title': 'Reportes Gráficos',
+        'icon': Icons.bar_chart_rounded,
+        'color': Colors.teal.shade700,
+        'pantalla': const ReportesGraficosScreen(), // ⬅️ Análisis por periodo, gráficos y exportación PDF
       },
       {
         'title': 'Reseñas de Clientes', // ⭐️ TARJETA AÑADIDA TAMBIÉN PARA EL DUEÑO/ADMIN
