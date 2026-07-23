@@ -40,6 +40,19 @@ class _ResenasScreenState extends State<ResenasScreen> {
     }
   }
 
+  // 📅 Función para formatear la fecha de la reseña
+  String _formatearFecha(Timestamp? timestamp) {
+    if (timestamp == null) return 'Hace un momento';
+    final fecha = timestamp.toDate();
+    final dia = fecha.day.toString().padLeft(2, '0');
+    final mes = fecha.month.toString().padLeft(2, '0');
+    final anio = fecha.year;
+    final hora = fecha.hour.toString().padLeft(2, '0');
+    final minuto = fecha.minute.toString().padLeft(2, '0');
+
+    return '$dia/$mes/$anio · $hora:$minuto';
+  }
+
   void _abrirFormularioModal(BuildContext context) {
     final uid = _authService.uid;
     if (uid.isEmpty) {
@@ -253,7 +266,11 @@ class _ResenasScreenState extends State<ResenasScreen> {
         onPressed: () => _abrirFormularioModal(context),
       ),
       body: StreamBuilder<QuerySnapshot>(
-        stream: _resenaService.escucharResenas(),
+        // 🛠️ ORDENADO: Se consulta Firestore ordenando por 'creadoEn' de forma descendente
+        stream: FirebaseFirestore.instance
+            .collection('resenas')
+            .orderBy('creadoEn', descending: true)
+            .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -279,10 +296,18 @@ class _ResenasScreenState extends State<ResenasScreen> {
             itemCount: docs.length,
             itemBuilder: (context, index) {
               final data = docs[index].data() as Map<String, dynamic>;
-              final String usuario = data['usuarioNombre'] ?? 'Conductor Anónimo';
+
+              // 👤 NOMBRE REAL DEL USUARIO
+              final String usuario = (data['usuarioNombre'] != null && data['usuarioNombre'].toString().trim().isNotEmpty)
+                  ? data['usuarioNombre']
+                  : ((data['usuarioEmail'] != null && data['usuarioEmail'].toString().trim().isNotEmpty)
+                  ? data['usuarioEmail'].toString().split('@')[0]
+                  : 'Conductor');
+
               final String parqueadero = data['parqueaderoNombre'] ?? 'Parqueadero';
               final String comentario = data['comentario'] ?? '';
               final double calificacion = (data['calificacion'] ?? 5.0).toDouble();
+              final Timestamp? creadoEn = data['creadoEn'];
 
               return Card(
                 margin: const EdgeInsets.only(bottom: 12),
@@ -293,10 +318,46 @@ class _ResenasScreenState extends State<ResenasScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Cabecera: Nombre de parqueadero y Fecha
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(parqueadero, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: kPrimary)),
+                          Expanded(
+                            child: Text(
+                              parqueadero,
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: kPrimary),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          // 📅 FECHA FORMATEADA
+                          Text(
+                            _formatearFecha(creadoEn),
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              color: Colors.grey.shade600,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(comentario, style: const TextStyle(fontSize: 13.5, color: Color(0xFF374151))),
+                      const SizedBox(height: 10),
+                      // Estrellas y Usuario
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.person, size: 14, color: Colors.grey.shade500),
+                              const SizedBox(width: 4),
+                              Text(
+                                usuario,
+                                style: TextStyle(fontSize: 12, color: Colors.grey.shade700, fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
                           Row(
                             children: List.generate(5, (i) {
                               return Icon(
@@ -306,16 +367,6 @@ class _ResenasScreenState extends State<ResenasScreen> {
                               );
                             }),
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      Text(comentario, style: const TextStyle(fontSize: 13.5, color: Color(0xFF374151))),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Icon(Icons.person, size: 14, color: Colors.grey.shade500),
-                          const SizedBox(width: 4),
-                          Text(usuario, style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.w500)),
                         ],
                       ),
                     ],
