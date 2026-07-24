@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // <--- Conexión real a Firebase
+import 'package:firebase_auth/firebase_auth.dart'; // Conexión real a Firebase
 import '../services/auth_service.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -17,6 +17,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
+  // 🚗 Controladores opcionales para el vehículo
+  final _placaController = TextEditingController();
+  final _modeloController = TextEditingController();
+  final _colorController = TextEditingController();
+
   bool _isPasswordVisible = false;
   final bool _isConfirmPasswordVisible = false;
   bool _isLoading = false;
@@ -28,6 +33,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
+    _placaController.dispose();
+    _modeloController.dispose();
+    _colorController.dispose();
     super.dispose();
   }
 
@@ -38,12 +46,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
       });
 
       try {
-        // Registra en Auth y guarda el perfil (nombre + rol) en Firestore.
+        // Registra en Auth y guarda el perfil (nombre + rol + datos opcionales) en Firestore.
         await AuthService().registrar(
           nombre: _nameController.text.trim(),
           email: _emailController.text.trim(),
           password: _passwordController.text.trim(),
           rol: _rol,
+          // 🔹 Se pasan los datos del vehículo (si está seleccionado rol conductor)
+          placa: _rol == 'conductor' ? _placaController.text.trim().toUpperCase() : '',
+          modeloMarca: _rol == 'conductor' ? _modeloController.text.trim() : '',
+          color: _rol == 'conductor' ? _colorController.text.trim() : '',
         );
 
         if (mounted) {
@@ -230,6 +242,69 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       return null;
                     },
                   ),
+
+                  // 🚗 CAMPOS OPCIONALES DEL VEHÍCULO (Solo se muestran si es Conductor)
+                  if (_rol == 'conductor') ...[
+                    const SizedBox(height: 24),
+                    Row(
+                      children: [
+                        const Text(
+                          'Datos del Vehículo',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade200,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Text(
+                            'Opcional',
+                            style: TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Campo Placa (OPCIONAL)
+                    TextFormField(
+                      controller: _placaController,
+                      textCapitalization: TextCapitalization.characters,
+                      decoration: InputDecoration(
+                        labelText: 'Número de Placa (ej. ABC-1234)',
+                        prefixIcon: const Icon(Icons.credit_card_outlined),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      validator: (_) => null, // Opcional
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Campo Modelo/Marca (OPCIONAL)
+                    TextFormField(
+                      controller: _modeloController,
+                      decoration: InputDecoration(
+                        labelText: 'Modelo / Marca (ej. Chevrolet Sail)',
+                        prefixIcon: const Icon(Icons.directions_car_outlined),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      validator: (_) => null, // Opcional
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Campo Color (OPCIONAL)
+                    TextFormField(
+                      controller: _colorController,
+                      decoration: InputDecoration(
+                        labelText: 'Color del vehículo (ej. Rojo)',
+                        prefixIcon: const Icon(Icons.palette_outlined),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      validator: (_) => null, // Opcional
+                    ),
+                  ],
+
                   const SizedBox(height: 32),
 
                   // Botón de Registrarse / Cargando
@@ -254,6 +329,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 }
+
 // Tarjeta seleccionable de rol (RF-22).
 class _RolCard extends StatelessWidget {
   final IconData icon;
@@ -285,8 +361,7 @@ class _RolCard extends StatelessWidget {
         ),
         child: Column(
           children: [
-            Icon(icon,
-                size: 32, color: seleccionado ? kPrimary : Colors.grey),
+            Icon(icon, size: 32, color: seleccionado ? kPrimary : Colors.grey),
             const SizedBox(height: 8),
             Text(
               titulo,

@@ -13,14 +13,51 @@ class ParkingLogicService {
 
   CollectionReference get _col => _db.collection('registros');
 
-  // RF-05: Registrar entrada. Guarda snapshot del garaje + puesto asignado.
+  // 🛡️ Verifica si el usuario tiene una entrada física o reserva activa
+  Future<bool> tieneOperacionActiva() async {
+    final user = _auth.currentUser;
+    if (user == null) return false;
+
+    // A) Verificar en entradas físicas directas (registros)
+    final snapRegistros = await _db
+        .collection('registros')
+        .where('usuarioId', isEqualTo: user.uid)
+        .where('estado', whereIn: ['activo', 'activa'])
+        .limit(1)
+        .get();
+
+    if (snapRegistros.docs.isNotEmpty) return true;
+
+    // B) Verificar en reservas activas
+    final snapReservas = await _db
+        .collection('reservas')
+        .where('usuarioId', isEqualTo: user.uid)
+        .where('estado', isEqualTo: 'activa')
+        .limit(1)
+        .get();
+
+    return snapReservas.docs.isNotEmpty;
+  }
+
+  // 🛡️ Método para validar fecha de reserva al crearla
+  static void validarFechaReserva(DateTime fechaHoraSeleccionada) {
+    final ahora = DateTime.now();
+    if (fechaHoraSeleccionada.isBefore(ahora.add(const Duration(minutes: 2)))) {
+      throw Exception('La fecha y hora de la reserva debe ser posterior al momento actual.');
+    }
+  }
+
+  // RF-05: Registrar entrada directa física.
   Future<String> registrarEntrada(Parqueadero p) async {
+    if (await tieneOperacionActiva()) {
+      throw Exception('Ya tienes una entrada registrada o reserva activa en curso. Debes finalizarla antes de iniciar otra.');
+    }
+
     final user = _auth.currentUser!;
     final ocupados = (p.espaciosTotales - p.espaciosLibres).clamp(0, p.espaciosTotales);
     final numeroPuesto = (ocupados + 1).clamp(1, p.espaciosTotales < 1 ? 1 : p.espaciosTotales);
     final puesto = 'P-${numeroPuesto.toString().padLeft(2, '0')}';
 
-    // 👤 Obtener el nombre registrado en la colección 'usuarios'
     String nombreUsuario = user.displayName ?? '';
     if (nombreUsuario.trim().isEmpty) {
       try {
@@ -33,7 +70,7 @@ class ParkingLogicService {
 
     final ref = await _col.add({
       'usuarioId': user.uid,
-      'usuarioNombre': nombreUsuario, // 👈 ¡CLAVE! Se guarda el nombre del conductor
+      'usuarioNombre': nombreUsuario,
       'usuarioEmail': user.email ?? '',
       'duenoId': p.ownerId,
       'parqueaderoId': p.id,
@@ -66,7 +103,7 @@ class ParkingLogicService {
     return fracciones * precioFraccion;
   }
 
-  // RF-05 + RF-06: Registrar salida.
+  // RF-05 + RF-06: Registrar salida con BLOQUEO RIGUROSO de reservas futuras.
   Future<double> registrarSalida(
       String registroId,
       String parqueaderoId,
@@ -78,6 +115,7 @@ class ParkingLogicService {
     final docRegistroRef = _db.collection('registros').doc(registroId);
     final docRegistroSnap = await docRegistroRef.get();
 
+    // 1️⃣ CASO A: Entrada física directa (Colección 'registros')
     if (docRegistroSnap.exists) {
       await docRegistroRef.update({
         'horaSalida': FieldValue.serverTimestamp(),
@@ -112,10 +150,54 @@ class ParkingLogicService {
       return costo;
 
     } else {
+      // 2️⃣ CASO B: Reserva Programada (Colección 'reservas')
       final docReservaRef = _db.collection('reservas').doc(registroId);
       final docReservaSnap = await docReservaRef.get();
 
       if (docReservaSnap.exists) {
+        final dataReserva = docReservaSnap.data() as Map<String, dynamic>;
+        final ahora = DateTime.now();
+        DateTime? fechaHoraProgramada;
+
+        // 🔍 Intentar parsear la fecha/hora desde campos de texto ("DD/MM/YYYY" y "HH:MM")
+        try {
+          final strFecha = dataReserva['fecha']?.toString(); // Ej: "23/07/2026"
+          final strHora = dataReserva['hora']?.toString();   // Ej: "20:00"
+
+          if (strFecha != null && strFecha.contains('/') && strHora != null && strHora.contains(':')) {
+            final partesFecha = strFecha.split('/');
+            final partesHora = strHora.split(':');
+
+            final dia = int.parse(partesFecha[0]);
+            final mes = int.parse(partesFecha[1]);
+            final anio = int.parse(partesFecha[2]);
+
+            final hora = int.parse(partesHora[0]);
+            final minuto = int.parse(partesHora[1]);
+
+            fechaHoraProgramada = DateTime(anio, mes, dia, hora, minuto);
+          }
+        } catch (_) {}
+
+        // 🔍 Respaldo por Timestamp de Firestore
+        if (fechaHoraProgramada == null) {
+          if (dataReserva['horaEntrada'] is Timestamp) {
+            fechaHoraProgramada = (dataReserva['horaEntrada'] as Timestamp).toDate();
+          } else if (dataReserva['fechaReserva'] is Timestamp) {
+            fechaHoraProgramada = (dataReserva['fechaReserva'] as Timestamp).toDate();
+          }
+        }
+
+        // 🛑 VALIDACIÓN RIGUROSA DE FECHA FUTURA:
+        if (fechaHoraProgramada != null) {
+          // Si el momento actual es menor a la hora programada (con margen de 5 minutos)
+          if (ahora.isBefore(fechaHoraProgramada.subtract(const Duration(minutes: 5)))) {
+            final formatoHora = '${fechaHoraProgramada.day.toString().padLeft(2, '0')}/${fechaHoraProgramada.month.toString().padLeft(2, '0')}/${fechaHoraProgramada.year} a las ${fechaHoraProgramada.hour.toString().padLeft(2, '0')}:${fechaHoraProgramada.minute.toString().padLeft(2, '0')}';
+            throw Exception('No puedes registrar la salida. Tu reserva está programada para el $formatoHora y aún no ha iniciado. Puedes cancelarla en la pantalla Mis Reservas');
+          }
+        }
+
+        // Si ya llegó la hora, procede a marcar salida
         await docReservaRef.update({
           'horaSalida': FieldValue.serverTimestamp(),
           'estado': 'finalizada',
