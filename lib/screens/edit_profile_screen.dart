@@ -223,18 +223,31 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               const SizedBox(height: 32),
 
               // Sección 2: Información del Vehículo
-              const Row(
+              Row(
                 children: [
-                  Icon(Icons.directions_car_rounded, color: kPrimary),
-                  SizedBox(width: 8),
-                  Text(
+                  const Icon(Icons.directions_car_rounded, color: kPrimary),
+                  const SizedBox(width: 8),
+                  const Text(
                     'Información del Vehículo',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade200,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Text(
+                      'Opcional',
+                      style: TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.w600),
+                    ),
                   ),
                 ],
               ),
               const Divider(height: 24),
 
+              // 🚗 CAMPO PLACA (OPCIONAL)
               TextFormField(
                 controller: _placaController,
                 textCapitalization: TextCapitalization.characters,
@@ -244,10 +257,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   prefixIcon: const Icon(Icons.badge_outlined),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                validator: (value) => value == null || value.trim().isEmpty ? 'Ingresa la placa del auto' : null,
+                validator: (_) => null, // 👈 Ahora es Opcional
               ),
               const SizedBox(height: 20),
 
+              // 🚗 CAMPO MODELO / MARCA (OPCIONAL)
               TextFormField(
                 controller: _modeloController,
                 decoration: InputDecoration(
@@ -256,10 +270,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   prefixIcon: const Icon(Icons.car_repair_outlined),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                validator: (value) => value == null || value.trim().isEmpty ? 'Ingresa el modelo' : null,
+                validator: (_) => null, // 👈 Ahora es Opcional
               ),
               const SizedBox(height: 20),
 
+              // 🚗 CAMPO COLOR (OPCIONAL)
               TextFormField(
                 controller: _colorController,
                 decoration: InputDecoration(
@@ -268,7 +283,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   prefixIcon: const Icon(Icons.palette_outlined),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                validator: (value) => value == null || value.trim().isEmpty ? 'Ingresa el color' : null,
+                validator: (_) => null, // 👈 Ahora es Opcional
               ),
               const SizedBox(height: 40),
 

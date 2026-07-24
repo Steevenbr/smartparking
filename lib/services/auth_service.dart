@@ -9,23 +9,51 @@ class AuthService {
   User? get usuarioActual => _auth.currentUser;
   String get uid => _auth.currentUser?.uid ?? '';
 
-  // RF-01 + RF-22: Registro con rol ('conductor' o 'dueno').
+  // 🚗 Verifica si el usuario tiene registrados la placa, modelo y color de su vehículo
+  Future<bool> tieneDatosVehiculoCompletos() async {
+    final id = uid;
+    if (id.isEmpty) return false;
+
+    try {
+      final doc = await _db.collection('usuarios').doc(id).get();
+      if (!doc.exists || doc.data() == null) return false;
+
+      final data = doc.data()!;
+      final placa = (data['placa'] ?? '').toString().trim();
+      final modelo = (data['modelo_marca'] ?? data['modelo'] ?? '').toString().trim();
+      final color = (data['color'] ?? '').toString().trim();
+
+      return placa.isNotEmpty && modelo.isNotEmpty && color.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // RF-01 + RF-22: Registro con rol ('conductor' o 'dueno') y campos opcionales de vehículo.
   Future<void> registrar({
     required String nombre,
     required String email,
     required String password,
     required String rol,
+    String placa = '',
+    String modeloMarca = '',
+    String color = '',
   }) async {
     try {
       final cred = await _auth.createUserWithEmailAndPassword(
         email: email.trim(),
         password: password.trim(),
       );
+
+      // Guardar perfil en Firestore
       await _db.collection('usuarios').doc(cred.user!.uid).set({
         'nombre': nombre.trim(),
         'email': email.trim(),
         'rol': rol, // RF-22
-        'favoritos': [], // RF-13: Inicializa la lista vacía para evitar nulos en favoritos
+        'favoritos': [], // RF-13
+        'placa': placa.trim().toUpperCase(), // Campo opcional
+        'modelo_marca': modeloMarca.trim(),  // Campo opcional
+        'color': color.trim(),               // Campo opcional
         'creadoEn': Timestamp.now(),
       });
     } catch (e) {
@@ -57,7 +85,7 @@ class AuthService {
   // RF-09: Cierre de sesión.
   Future<void> cerrarSesion() async => await _auth.signOut();
 
-  // RF-10: Recuperación de contraseña (dentro de la clase de manera correcta)
+  // RF-10: Recuperación de contraseña.
   Future<void> recuperarContrasena(String email) async {
     try {
       await _auth.setLanguageCode("es"); // Asegura el correo en español
@@ -67,7 +95,7 @@ class AuthService {
     }
   }
 
-  // NUEVA FUNCIÓN: Permite cambiar el correo electrónico del usuario (Auth + Firestore)
+  // Permite cambiar el correo electrónico del usuario (Auth + Firestore).
   Future<void> actualizarEmail(String nuevoEmail) async {
     final user = _auth.currentUser;
     final id = uid;
@@ -77,10 +105,10 @@ class AuthService {
     }
 
     try {
-      // 1. Envía correo de confirmación al nuevo mail y lo encola para actualización en Auth
+      // 1. Envía correo de confirmación al nuevo mail
       await user.verifyBeforeUpdateEmail(nuevoEmail.trim());
 
-      // 2. Sincroniza el nuevo email en el documento de la base de datos de Firestore
+      // 2. Sincroniza en Firestore
       await _db.collection('usuarios').doc(id).update({
         'email': nuevoEmail.trim(),
       });
@@ -112,7 +140,7 @@ class AuthService {
     return e.toString();
   }
 
-  // RF-11: Actualiza los datos de perfil y vehículo del usuario en Firestore
+  // RF-11: Actualiza los datos de perfil y vehículo del usuario en Firestore.
   Future<void> actualizarPerfilYVehiculo({
     required String nombre,
     required String placa,
@@ -125,11 +153,9 @@ class AuthService {
     try {
       await _db.collection('usuarios').doc(id).update({
         'nombre': nombre.trim(),
-        'vehiculo': {
-          'placa': placa.trim().toUpperCase(),
-          'modelo': modelo.trim(),
-          'color': color.trim(),
-        },
+        'placa': placa.trim().toUpperCase(),
+        'modelo_marca': modelo.trim(),
+        'color': color.trim(),
         'actualizadoEn': Timestamp.now(),
       });
     } catch (e) {

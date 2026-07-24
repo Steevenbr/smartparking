@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../models/parqueadero.dart';
 import '../services/parqueadero_service.dart';
+import '../services/parking_logic_service.dart';
+import '../services/auth_service.dart'; // 👈 Importado para la validación de perfil
+import 'edit_profile_screen.dart'; // 👈 Importado para la redirección al perfil
 import 'pago_reserva_screen.dart';
 
 // RF-04: reserva de estacionamientos (ahora con pago anticipado).
@@ -13,6 +16,8 @@ class ReservaScreen extends StatefulWidget {
 
 class _ReservaScreenState extends State<ReservaScreen> {
   final _parqueaderos = ParqueaderoService();
+  final _parkingLogic = ParkingLogicService();
+  final _authService = AuthService(); // 👈 Instancia para consultar datos del vehículo
   final _duracionCtrl = TextEditingController(text: '2');
 
   // Guardamos solo el id (texto) para evitar el error del Dropdown.
@@ -35,7 +40,51 @@ class _ReservaScreenState extends State<ReservaScreen> {
     return p.tarifaHora * horas;
   }
 
+  // 🚗 Diálogo de alerta que invita a completar el vehículo en EditProfileScreen
+  Future<void> _mostrarDialogoCompletarVehiculo(BuildContext context) async {
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.directions_car_rounded, color: Colors.blue),
+            SizedBox(width: 8),
+            Text('Datos del Vehículo'),
+          ],
+        ),
+        content: const Text(
+          'Para poder realizar una reserva, es necesario que registres la placa, modelo y color de tu vehículo en tu perfil.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const EditProfileScreen()),
+              );
+            },
+            child: const Text('Completar Perfil'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _continuarAlPago() async {
+    // 🛑 VALIDACIÓN PREVIA: Verificar que tenga registrados placa, modelo y color
+    final vehiculoCompleto = await _authService.tieneDatosVehiculoCompletos();
+    if (!vehiculoCompleto) {
+      if (!mounted) return;
+      await _mostrarDialogoCompletarVehiculo(context);
+      return;
+    }
+
     if (_seleccionadoId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Selecciona un parqueadero.')),
@@ -49,8 +98,8 @@ class _ReservaScreenState extends State<ReservaScreen> {
     if (p.espaciosLibres <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-        content: Text('Ese parqueadero no tiene espacios disponibles.'),
-        backgroundColor: Colors.red,
+          content: Text('Ese parqueadero no tiene espacios disponibles.'),
+          backgroundColor: Colors.red,
         ),
       );
       return;
@@ -67,7 +116,53 @@ class _ReservaScreenState extends State<ReservaScreen> {
       return;
     }
 
+    // 🛑 VALIDACIÓN 1: Verificar que la Fecha/Hora seleccionada sea futura y no del pasado
+    final ahora = DateTime.now();
+    final fechaHoraReserva = DateTime(
+      _fecha.year,
+      _fecha.month,
+      _fecha.day,
+      _hora.hour,
+      _hora.minute,
+    );
+
+    if (fechaHoraReserva.isBefore(ahora.subtract(const Duration(minutes: 1)))) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('La fecha y hora de reserva no puede ser anterior al momento actual.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // 🛑 VALIDACIÓN 2: Verificar si el usuario ya tiene un servicio activo (reserva o entrada física)
+    try {
+      final tieneActiva = await _parkingLogic.tieneOperacionActiva();
+      if (tieneActiva) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Ya cuentas con un servicio de parqueo o reserva activa. Debes finalizarlo antes de crear uno nuevo.'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 4),
+          ),
+        );
+        return;
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al verificar operaciones activas: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     // Vamos a la pantalla de pago anticipado.
+    if (!mounted) return;
     final pagado = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
@@ -108,7 +203,7 @@ class _ReservaScreenState extends State<ReservaScreen> {
                 padding: EdgeInsets.all(24),
                 child: Text(
                   'Aún no hay parqueaderos registrados.\n'
-                  'El administrador debe crearlos primero desde el Panel Administrador.',
+                      'El administrador debe crearlos primero desde el Panel Administrador.',
                   textAlign: TextAlign.center,
                 ),
               ),
@@ -129,17 +224,17 @@ class _ReservaScreenState extends State<ReservaScreen> {
                   initialValue: _seleccionadoId,
                   isExpanded: true,
                   decoration:
-                      const InputDecoration(border: OutlineInputBorder()),
+                  const InputDecoration(border: OutlineInputBorder()),
                   hint: const Text('Selecciona un parqueadero'),
                   // Mostramos espacios libres y tarifa de cada parqueadero.
                   items: _lista
                       .map((p) => DropdownMenuItem<String>(
-                            value: p.id,
-                            child: Text(
-                              '${p.nombre} · ${p.espaciosLibres} libres · \$${p.tarifaHora.toStringAsFixed(2)}/h',
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ))
+                    value: p.id,
+                    child: Text(
+                      '${p.nombre} · ${p.espaciosLibres} libres · \$${p.tarifaHora.toStringAsFixed(2)}/h',
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ))
                       .toList(),
                   onChanged: (v) => setState(() => _seleccionadoId = v),
                 ),
